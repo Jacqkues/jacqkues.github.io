@@ -6,7 +6,7 @@ seo:
   image:
     src: '/project-1.jpg'
     alt: Project preview
-isFeatured: true
+isFeatured: false
 ---
 
 ![Project preview](/project-1.jpg)
