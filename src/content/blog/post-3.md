@@ -1,6 +1,6 @@
 ---
 title: Constuire un framwork de deep learning sans connaissance. 0
-excerpt: In recent years, the way we work has undergone a significant transformation, largely due to advancements in technology and changing attitudes toward work-life balance. One of the most notable changes has been the rise of remote work, allowing employees to work from the comfort of their own homes.
+excerpt: Dans cette serie d'articles, nous allons construire un framework de deep learning sans connaissance préalable. Nous allons commencer par les bases des mathématiques nécessaire et progresser étape par étape jusqu'a arriver à un outils nous permettant de construire et d'entrainer de simple model de reseaux de neuronnes.
 publishDate: 'Nov 2 2024'
 tags:
   - Guide
