@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual Perceptron Training for AND Operation</title>
+<style>
+  body { font-family: Arial, sans-serif; }
+  #controls { margin-bottom: 20px; }
+  canvas { border: 1px solid black; }
+  .slider-container { margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h2>Entraînement manuel d'un Perceptron pour l'opération AND</h2>
+
+<div id="controls">
+  <div class="slider-container">
+    <label>Poids 1 (w1): 
+      <input type="range" id="weight1" min="-2" max="2" step="0.1" value="0.5" oninput="updateLabel('labelW1', this.value); drawPerceptron()">
+      <span id="labelW1">0.5</span>
+    </label>
+  </div>
+  
+  <div class="slider-container">
+    <label>Poids 2 (w2): 
+      <input type="range" id="weight2" min="-2" max="2" step="0.1" value="0.5" oninput="updateLabel('labelW2', this.value); drawPerceptron()">
+      <span id="labelW2">0.5</span>
+    </label>
+  </div>
+</div>
+
+<canvas id="canvas" width="400" height="400"></canvas>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Données pour l'opération AND
+  const data = [
+    { x: 0, y: 0, output: 0 },
+    { x: 0, y: 1, output: 0 },
+    { x: 1, y: 0, output: 0 },
+    { x: 1, y: 1, output: 1 }
+  ];
+
+  // Fonction du perceptron sans biais
+  function perceptron(x1, x2, w1, w2) {
+    const sum = x1 * w1 + x2 * w2;
+    return sum >= 0 ? 1 : 0;
+  }
+
+  // Met à jour l'étiquette du slider
+  function updateLabel(id, value) {
+    document.getElementById(id).textContent = value;
+  }
+
+  // Dessine les points de données et la ligne de séparation
+  function drawPerceptron() {
+    const w1 = parseFloat(document.getElementById('weight1').value);
+    const w2 = parseFloat(document.getElementById('weight2').value);
+
+    // Efface le canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Dessine les points de l'opération AND
+    data.forEach(point => {
+      const color = point.output === 1 ? 'blue' : 'red';
+      drawPoint(point.x, point.y, color);
+    });
+
+    // Dessine la ligne de séparation en fonction des poids
+    drawDecisionBoundary(w1, w2);
+  }
+
+  // Dessine un point sur le canvas
+  function drawPoint(x, y, color) {
+    const plotX = x * 200 + 100;
+    const plotY = 300 - y * 200;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(plotX, plotY, 10, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  // Dessine la ligne de séparation sans biais
+  function drawDecisionBoundary(w1, w2) {
+    // Calcul des points sur la ligne de séparation
+    let x1 = -0.1, x2 = 1.1;
+    let y1 = -(w1 * x1) / w2;
+    let y2 = -(w1 * x2) / w2;
+
+    // Convertit les points en coordonnées canvas
+    const canvasX1 = x1 * 200 + 100;
+    const canvasY1 = 300 - y1 * 200;
+    const canvasX2 = x2 * 200 + 100;
+    const canvasY2 = 300 - y2 * 200;
+
+    // Dessine la ligne sur le canvas
+    ctx.strokeStyle = 'green';
+    ctx.beginPath();
+    ctx.moveTo(canvasX1, canvasY1);
+    ctx.lineTo(canvasX2, canvasY2);
+    ctx.stroke();
+  }
+
+  // Dessin initial
+  drawPerceptron();
+</script>
+
+</body>
+</html>
