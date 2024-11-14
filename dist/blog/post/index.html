@@ -1,0 +1,61 @@
+<!DOCTYPE html><html lang="en" class="antialiased break-words"> <head><!-- High Priority Global Metadata --><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>De Zéro à ChatGpt, Part 1 | Jacques</title><meta name="generator" content="Astro v4.15.4"><!-- Fonts --><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&display=swap" rel="stylesheet"><!-- Low Priority Global Metadata --><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="sitemap" href="/sitemap-index.xml"><link rel="alternate" type="application/rss+xml" href="/rss.xml" title="RSS"><!-- Page Metadata --><link rel="canonical" href="https://jacqkues.github.io/blog/post/"><meta name="description" content="Cette série d'articles est dédiée à la création d’un framework de deep learning entièrement fait maison ! Notre objectif final : bâtir une base suffisamment solide pour nous permettre d'implémenter l'architecture Transformer. Dans ce premier article, nous allons plonger dans les fondations, en développant un simple réseau de neurones avec Numpy et Python. "><!-- Open Graph / Facebook --><meta property="og:type" content="article"><meta property="og:url" content="https://jacqkues.github.io/blog/post/"><meta property="og:title" content="De Zéro à ChatGpt, Part 1 | Jacques"><meta property="og:description" content="Cette série d'articles est dédiée à la création d’un framework de deep learning entièrement fait maison ! Notre objectif final : bâtir une base suffisamment solide pour nous permettre d'implémenter l'architecture Transformer. Dans ce premier article, nous allons plonger dans les fondations, en développant un simple réseau de neurones avec Numpy et Python. "><meta property="og:image" content="https://jacqkues.github.io/p1.jpg"><meta property="og:image:alt" content="Neural Network"><!-- X/Twitter --><meta property="twitter:card" content="summary_large_image"><meta property="twitter:url" content="https://jacqkues.github.io/blog/post/"><meta property="twitter:title" content="De Zéro à ChatGpt, Part 1 | Jacques"><meta property="twitter:description" content="Cette série d'articles est dédiée à la création d’un framework de deep learning entièrement fait maison ! Notre objectif final : bâtir une base suffisamment solide pour nous permettre d'implémenter l'architecture Transformer. Dans ce premier article, nous allons plonger dans les fondations, en développant un simple réseau de neurones avec Numpy et Python. "><meta property="twitter:image" content="https://jacqkues.github.io/p1.jpg"><meta name="twitter:image:alt" content="Neural Network"><meta name="astro-view-transitions-enabled" content="true"><meta name="astro-view-transitions-fallback" content="animate"><link rel="stylesheet" href="/_astro/_slug_.D6iIiD7H.css"><script type="module" src="/_astro/hoisted.AkgrWwE9.js"></script></head> <body class="bg-main text-main"> <div class="flex flex-col min-h-screen px-4 md:px-8"> <nav class="min-h-10 pt-4 pb-12 relative sm:min-h-14 sm:pb-24 md:pt-8" data-astro-cid-dmqpwcec> <div class="w-full max-w-3xl mx-auto relative" data-astro-cid-dmqpwcec> <button class="menu-toggle w-8 h-8 -ml-1 flex items-center justify-center relative z-30 md:hidden" aria-label="Open Menu" aria-expanded="false" aria-controls="menu-items" data-astro-cid-dmqpwcec> <span class="menu-toggle-icon w-6 h-px relative bg-current" data-astro-cid-dmqpwcec></span> </button> <ul id="menu-items" class="menu flex gap-6" data-astro-cid-dmqpwcec> <li class="py-1" data-astro-cid-dmqpwcec> <a class="text-xl font-serif text-main hover:underline hover:underline-offset-2 hover:decoration-1 md:text-base" href="/" data-astro-cid-dmqpwcec> Home </a> </li><li class="py-1" data-astro-cid-dmqpwcec> <a class="text-xl font-serif text-main hover:underline hover:underline-offset-2 hover:decoration-1 md:text-base" href="/projects" data-astro-cid-dmqpwcec> Projects </a> </li><li class="py-1" data-astro-cid-dmqpwcec> <a class="text-xl font-serif text-main hover:underline hover:underline-offset-2 hover:decoration-1 md:text-base" href="/blog" data-astro-cid-dmqpwcec> Blog </a> </li><li class="py-1" data-astro-cid-dmqpwcec> <a class="text-xl font-serif text-main hover:underline hover:underline-offset-2 hover:decoration-1 md:text-base" href="/tags" data-astro-cid-dmqpwcec> Tags </a> </li> </ul> </div> <div class="absolute right-0 top-4 z-10 md:top-8" data-astro-cid-dmqpwcec> <button id="theme-toggle" class="w-8 h-8 -mr-2 flex items-center justify-center" aria-label="Change color scheme"> <svg class="w-4 h-4 fill-current" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"> <circle cx="8" cy="8" r="8"></circle> </svg> </button>   </div> </nav>    <main class="grow w-full max-w-3xl mx-auto">  <article class="mb-16 sm:mb-24"> <header class="mb-8"> <h1 class="text-3xl leading-tight font-serif font-medium sm:text-5xl sm:leading-tight">De Zéro à ChatGpt, Part 1</h1> <div class="mt-4 text-sm"> <time datetime="2024-11-11T23:00:00.000Z"> November 12, 2024 </time>  </div> </header> <div class="max-w-none prose prose-dante sm:prose-lg"> <p><img src="/RNN_Tutorial.avif" alt="Neural Network"></p>
+<h2 id="introduction">Introduction</h2>
+<p>Si vous n’avez pas passé la dernière décennie enfermé dans une cave, vous avez sûrement entendu parler de termes comme “Intelligence Artificielle”, “Deep Learning” ou encore “Réseaux de neurones”. Et si, comme moi, vous étudiez l’informatique, je parie que vous en avez entendu parler plus d’une fois.</p>
+<p>Bien que ces concepts soient devenus familiers pour beaucoup, leur fonctionnement interne reste un mystère pour de nombreuses personnes. C’était d’ailleurs le cas pour moi avant de me lancer dans le projet de créer un réseau de neurones complexe, et ce, sans utiliser de bibliothèque de deep learning telle que PyTorch ou TensorFlow.</p>
+<p>Alors, si vous êtes assez curieux pour plonger dans les profondeurs de l’intelligence artificielle et faire partie de ceux qui sauront l’affronter lors du soulèvement des machines… c’est parti !</p>
+<h2 id="le-neuronne-ou-perceptron">Le neuronne (ou perceptron)</h2>
+<p>Pour comprendre le deep learning et notamment les réseaux de neurones, il est primordial de s’intéresser à un élément clé de son fonctionnement : le neurone ! J’imagine que tu connais le terme neurone ; eh bien, le neurone en informatique est appelé ainsi car son fonctionnement tend à se rapprocher de celui du neurone biologique : il prend en entrée différentes informations et en ressort une unique.</p>
+<p>Voici à quoi ressemble un neurone en intelligence artificielle (on utilisera le terme perceptron par la suite, qui est le terme scientifique) :</p>
+<p><img src="/perceptron.png" alt="perceptron"></p>
+<p>Son fonctionnement est simple :</p>
+<ul>
+<li>Le perceptron prend plusieurs valeurs en entrée.</li>
+<li>Chaque valeur est multipliée par son poids, noté wi</li>
+<li>Les valeurs pondérées sont ensuite additionnées entre elles.</li>
+<li>Enfin, une fonction dite d’activation est appliquée au résultat.</li>
+</ul>
+<p>Mathematiquement parlant un perceptron est simplement une fonction de cette forme :</p>
+<p>f(x * w0 + y * w1 + z * w2 + biais) = output</p>
+<p>avec f la fonction d’activation. (à adapter en fonction du nombres d’entrée )</p>
+<p>Bon, alors c’est super : nous avons une simple fonction mathématique, mais comment cela pourrait-il nous permettre de “prendre le contrôle du monde” et de créer une intelligence supérieure ? Où est l’intelligence dans tout cela ?</p>
+<p>Nous allons explorer le “Hello world” de l’IA en utilisant le perceptron pour apprendre le fonctionnement des opérateurs booléens (vrai ou faux) AND et OR. Le mot “apprendre” est utilisé ici car nous allons simplement indiquer les valeurs de sortie que nous souhaitons obtenir en fonction des entrées. Notre neurone va ainsi apprendre le concept des opérations AND et OR et sera capable de les réaliser sans que l’opération elle-même ait été explicitement programmée dans le code.</p>
+<p><strong>AND</strong></p>
+<p>Petit rappel , une operation <strong>AND</strong> retourne 1 si les deux valeurs sont à 1. Voici la table de correspondance :</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Entrée A</th><th>Entrée B</th><th>AND</th></tr></thead><tbody><tr><td>0</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>0</td></tr><tr><td>1</td><td>0</td><td>0</td></tr><tr><td>1</td><td>1</td><td>1</td></tr></tbody></table>
+<p>Nous avons donc deux entrées à notre neuronne : A et B.  La fonction de notre perceptron ressemblera à ça : f(A * w1 + B * w2 + b) = output. Notre but est donc maintenant que la sortie de</p>
+<h2 id="cest-quoi-un-réseau-de-neurones">C’est quoi un réseau de neurones ?</h2>
+<h2 id="pourquoi-les-tenseurs">Pourquoi les tenseurs ?</h2>
+<h2 id="notre-premiere-implémentations">Notre premiere implémentations</h2> </div> <div class="mt-8 flex flex-wrap items-center gap-6 text-sm justify-between sm:mt-12 sm:text-base"> <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm"> <a class="text-main hover:underline" href="/tags/guide">
+#Guide </a> </div> <button class="inline-flex items-center justify-center px-6 py-2 font-serif text-sm leading-tight italic  text-main bg-main border border-main rounded-full transition hover:bg-muted copy-url-button" aria-label="Copy link" data-url="https://jacqkues.github.io/blog/post/" data-tooltip-default="Copy link" data-tooltip-success="Copied">Share</button> </div> </article>   </main> <footer class="w-full max-w-3xl mx-auto pt-12 pb-10 sm:pt-24 sm:pb-14"> <div class="mb-4 flex flex-wrap gap-x-6 gap-y-1"> <a class="font-serif hover:underline hover:underline-offset-2" href="/about"> About </a><a class="font-serif hover:underline hover:underline-offset-2" href="/contact"> Contact </a> </div> <div class="pt-6 flex flex-col gap-4 border-t border-dashed border-main sm:flex-row-reverse sm:justify-between sm:items-center"> <div class="flex flex-wrap gap-x-4 gap-y-1"> <a class="inline-flex items-center justify-center text-sm hover:underline hover:underline-offset-2" href="https://github.com/Jacqkues" target="_blank" rel="noopener noreferer"> Github </a><a class="inline-flex items-center justify-center text-sm hover:underline hover:underline-offset-2" href="www.linkedin.com/in/jacques-dumora" target="_blank" rel="noopener noreferer"> LinkedIn </a><a class="inline-flex items-center justify-center text-sm hover:underline hover:underline-offset-2" href="https://x.com/_jacqD" target="_blank" rel="noopener noreferer"> X/Twitter </a> </div> <p class="text-sm">
+&copy; 2024&nbsp;<a class="hover:underline hover:underline-offset-2" href="/">Jacques</a>. All rights reserved.
+</p> </div> </footer> </div> </body></html> 
