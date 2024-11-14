@@ -17,9 +17,13 @@ jobs:
       - name: Checkout your repository
         uses: actions/checkout@v4
 
-      # Step to ensure `pnpm-lock.yaml` is in sync with `package.json`
+      # Install pnpm
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      # Ensure pnpm-lock.yaml is up to date
       - name: Ensure pnpm-lock.yaml is up to date
-        run: pnpm install # This will update the lockfile if needed
+        run: pnpm install
 
       - name: Install, build, and upload your site
         uses: withastro/action@v3
