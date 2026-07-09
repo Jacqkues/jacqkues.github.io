@@ -1,0 +1,93 @@
+---
+import Base from "../layouts/Base.astro";
+import RawShader from "../components/RawShader.astro";
+import { getCollection } from "astro:content";
+
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.publishDate.valueOf() - a.data.publishDate.valueOf()
+);
+const fmt = (d: Date) =>
+  d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+---
+<Base title="Jacques — ML & Data Engineer" fullBleed>
+  <main>
+    <section class="hero">
+      <RawShader scene={4} />
+      <div class="hero-copy">
+        <h1>Jacques Dumora.<br />ML &amp; Data Engineer.</h1>
+      </div>
+      <div class="hint">Bougez le curseur ↺</div>
+    </section>
+
+    <section class="page">
+      <div class="eyebrow">Hello</div>
+      <p class="statement">
+        Hi 👋 I'm <strong>Jacques Dumora</strong>, a Machine Learning Engineer based in Paris, France.
+        Passionate about cutting-edge technologies and data science, I specialize in crafting
+        innovative and efficient solutions to tackle both today's challenges and those of the future.
+      </p>
+      <p class="statement second">
+        Whether it's <strong>machine learning</strong>, <strong>data modeling</strong>, <strong>software engineering</strong> or <strong>AI-driven systems</strong>, my goal is to merge technical excellence with elegant design to provide real value.
+      </p>
+      <p class="follow">
+        Feel free to explore some of my coding endeavors on <a class="ln" href="https://github.com/Jacqkues">GitHub</a> or follow me on <a class="ln" href="https://x.com/_jacqD">Twitter/X</a>.
+      </p>
+      <a class="cta" href="/contact">Get in Touch →</a>
+    </section>
+
+    <section class="page posts">
+      <div class="eyebrow">Latest from the blog</div>
+      {posts.map((p, i) => (
+        <a class="post-row" href={`/blog/${p.id}`}>
+          <span class="idx">{String(i + 1).padStart(2, "0")}</span>
+          <span class="title">{p.data.title}</span>
+          <span class="post-meta">{fmt(p.data.publishDate)}</span>
+        </a>
+      ))}
+    </section>
+  </main>
+</Base>
+
+<style>
+  .hero { position: relative; height: 100svh; }
+  .hero-copy {
+    position: absolute; left: clamp(1rem, 3vw, 2rem); bottom: 2.2rem; z-index: 5;
+  }
+  .hero-copy h1 {
+    font-size: clamp(2rem, 5.5vw, 3.8rem);
+    color: var(--ink);
+    text-shadow: 0 0 30px rgba(0, 0, 0, 0.85);
+  }
+  .hint {
+    position: absolute; right: clamp(1rem, 3vw, 2rem); bottom: 2.2rem; z-index: 5;
+    pointer-events: none; font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--dim); animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .hint { animation: none; } }
+
+  .statement { font-size: clamp(1.1rem, 2.2vw, 1.6rem); line-height: 1.45; max-width: 52rem; color: #d6d4cf; }
+  .statement strong { color: var(--ink); font-weight: 300; }
+  .second { margin-top: 1.4rem; }
+  .follow { margin-top: 1.6rem; color: var(--dim); font-size: 0.85rem; }
+  .ln { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
+  .ln:hover { text-decoration-color: var(--ink); }
+  .cta {
+    display: inline-block; margin-top: 2rem;
+    font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+    border: 1px solid var(--subtle); padding: 0.7rem 1.5rem;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+  }
+  .cta:hover { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+
+  .posts { padding-top: 0; }
+  .post-row {
+    display: grid; grid-template-columns: 3rem 1fr auto; gap: 1rem; align-items: baseline;
+    padding: 1.1rem 0; border-top: 1px solid var(--line);
+    transition: color 0.2s;
+  }
+  .post-row:last-child { border-bottom: 1px solid var(--line); }
+  .idx { font-size: 0.7rem; color: var(--subtle); }
+  .title { font-size: 1.05rem; }
+  .post-row:hover .title { text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--subtle); }
+</style>

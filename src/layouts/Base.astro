@@ -1,0 +1,169 @@
+---
+import InkWipe from "../components/InkWipe.astro";
+interface Props {
+  title: string;
+  description?: string;
+  fullBleed?: boolean;
+}
+const {
+  title,
+  description = "Jacques Dumora — Machine Learning Engineer based in Paris, France.",
+  fullBleed = false,
+} = Astro.props;
+const nav = [
+  { href: "/projects", label: "Projects" },
+  { href: "/lab", label: "Lab" },
+  { href: "/blog", label: "Blog" },
+  { href: "/tags", label: "Tags" },
+  { href: "/about", label: "About" },
+];
+const path = Astro.url.pathname;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title="Jacques" href="/rss.xml" />
+    <link rel="preload" as="font" href="/fonts/GeistMono-Light.woff2" type="font/woff2" crossorigin />
+  </head>
+  <body class:list={[{ "full-bleed": fullBleed }]}>
+    <InkWipe />
+    <header class="site-header">
+      <nav>
+        <a class="brand" href="/">JACQUES — DUMORA</a>
+        <div class="links">
+          {nav.map((n) => (
+            <a href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</a>
+          ))}
+        </div>
+      </nav>
+    </header>
+    <slot />
+    <footer>
+      <div class="foot-inner">
+        <div class="foot-links">
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="https://github.com/Jacqkues">Github</a>
+          <a href="https://www.linkedin.com/in/jacques-dumora">LinkedIn</a>
+          <a href="https://x.com/_jacqD">X/Twitter</a>
+        </div>
+        <p>© 2026 Jacques. All rights reserved.</p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style is:global>
+  @font-face {
+    font-family: "GeistMono-Light";
+    src: url("/fonts/GeistMono-Light.woff2") format("woff2");
+    font-weight: 300;
+    font-style: normal;
+    font-display: block;
+  }
+  :root {
+    --bg: #000;
+    --ink: #fff;
+    --dim: #9a9a9a;
+    --subtle: #4d4d4d;
+    --line: #262626;
+    --mono: "GeistMono-Light", ui-monospace, Menlo, monospace;
+    --sans: "Geist", "Helvetica Neue", -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; background: var(--bg); }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-weight: 300;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+  ::selection { background: #fff; color: #000; }
+  a { color: inherit; text-decoration: none; }
+
+  .site-header {
+    position: fixed; inset: 0 0 auto 0; z-index: 50;
+    mix-blend-mode: difference;
+  }
+  .site-header nav {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 1.1rem clamp(1rem, 3vw, 2rem);
+    font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .brand { color: #fff; }
+  .links { display: flex; gap: 1.4rem; }
+  .links a { color: #999; transition: color 0.2s; }
+  .links a:hover, .links a[aria-current="page"] { color: #fff; }
+
+  main { flex: 1; }
+  .page {
+    width: 100%; max-width: 72rem; margin: 0 auto;
+    padding: 7rem clamp(1rem, 3vw, 2rem) 4rem;
+  }
+  .eyebrow {
+    font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 1.4rem;
+  }
+  h1, h2, h3 { font-weight: 300; line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; }
+  h1 { font-size: clamp(1.7rem, 4vw, 2.7rem); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim);
+  }
+  .foot-inner {
+    max-width: 72rem; margin: 0 auto; padding: 1.6rem clamp(1rem, 3vw, 2rem) 2.2rem;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem;
+  }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 1.3rem; }
+  .foot-links a:hover { color: var(--ink); }
+
+  /* prose (articles) */
+  .prose { font-size: 1rem; color: #d6d4cf; }
+  .prose h2 {
+    font-size: 1.15rem; color: var(--ink); margin: 2.6rem 0 0.9rem;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    border-top: 1px solid var(--line); padding-top: 1.4rem;
+  }
+  .prose p + p { margin-top: 1rem; }
+  .prose strong { color: var(--ink); font-weight: 300; }
+  .prose a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
+  .prose a:hover { text-decoration-color: var(--ink); }
+  .prose img { max-width: 100%; height: auto; margin: 1.8rem 0; border: 1px solid var(--line); }
+  .prose ul, .prose ol { padding-left: 1.4rem; margin: 1rem 0; }
+  .prose li + li { margin-top: 0.4rem; }
+  .prose pre {
+    background: #0c0c0c; border: 1px solid var(--line);
+    padding: 1.1rem 1.3rem; overflow-x: auto;
+    font-size: 0.82rem; line-height: 1.55; margin: 1.4rem 0;
+  }
+  .prose code { font-family: var(--mono); font-size: 0.9em; }
+  .prose :not(pre) > code { background: #161616; border: 1px solid var(--line); padding: 0.08em 0.35em; }
+  .prose table { border-collapse: collapse; margin: 1.4rem 0; font-size: 0.85rem; }
+  .prose th, .prose td { border: 1px solid var(--subtle); padding: 0.4rem 1rem; text-align: center; }
+  .prose th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); }
+  .prose blockquote { border-left: 2px solid var(--subtle); padding-left: 1rem; color: var(--dim); margin: 1.4rem 0; }
+
+  .post-meta { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+  .tag {
+    font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+    border: 1px solid var(--subtle); padding: 0.25rem 0.8rem; color: var(--dim);
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .tag:hover { border-color: var(--ink); color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+</style>

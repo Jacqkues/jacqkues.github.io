@@ -1,0 +1,85 @@
+<div id="ink-wipe" aria-hidden="true"><canvas></canvas></div>
+
+<style>
+  #ink-wipe {
+    position: fixed; inset: 0; z-index: 200; pointer-events: none;
+  }
+  #ink-wipe canvas { width: 100%; height: 100%; display: block; }
+</style>
+
+<script>
+  // #1 — transition de page : l'encre avale l'ecran au clic, se retire a l'arrivee
+  const wrap = document.getElementById("ink-wipe")!;
+  const cv = wrap.querySelector("canvas") as HTMLCanvasElement;
+  const gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true });
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (gl && !reduced) {
+    const VS = `attribute vec2 aPos; varying vec2 vUV;
+      void main(){ vUV=aPos*0.5+0.5; gl_Position=vec4(aPos,0.,1.); }`;
+    const FS = `
+      precision highp float; varying vec2 vUV;
+      uniform vec2 uRes; uniform float uProg; uniform float uTime;
+      float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+      float fbm(vec2 p){ float v=0.,a=.5; for(int k=0;k<5;k++){ v+=a*noise(p); p=p*2.03+11.7; a*=.5; } return v; }
+      void main(){
+        vec2 p=vUV*vec2(uRes.x/uRes.y,1.0)*3.0;
+        float n=fbm(p+0.4*fbm(p*1.7+uTime*0.15));
+        float t=uProg*1.5-0.25;
+        float cover=smoothstep(n-0.07,n+0.07,t);
+        float rim=smoothstep(0.05,0.0,abs(n-t))*(1.0-cover*0.5);
+        vec3 col=vec3(0.004)+vec3(0.9,0.88,0.84)*rim*0.9;
+        gl_FragColor=vec4(col*cover, cover);
+      }`;
+    const mk = (t: number, s: string) => { const sh = gl.createShader(t)!; gl.shaderSource(sh, s); gl.compileShader(sh); return sh; };
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, VS));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog); gl.useProgram(prog);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, "uRes"), uProg = gl.getUniformLocation(prog, "uProg"), uTime = gl.getUniformLocation(prog, "uTime");
+
+    const size = () => {
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+      gl.viewport(0, 0, cv.width, cv.height);
+      gl.uniform2f(uRes, cv.width, cv.height);
+    };
+    size(); addEventListener("resize", size, { passive: true });
+
+    let prog01 = 1, target = 0, navTo: string | null = null;
+    const frame = (now: number) => {
+      prog01 += (target - prog01) * 0.16;
+      if (target === 1 && prog01 > 0.985 && navTo) { location.href = navTo; navTo = null; }
+      gl.uniform1f(uProg, prog01);
+      gl.uniform1f(uTime, now / 1000);
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+
+    // arrivee : l'encre se retire
+    requestAnimationFrame(() => { target = 0; });
+    addEventListener("pageshow", () => { prog01 = 1; target = 0; });
+
+    // depart : l'encre avale la page puis on navigue
+    document.addEventListener("click", (e) => {
+      const a = (e.target as Element).closest?.("a");
+      if (!a || a.target === "_blank" || e.metaKey || e.ctrlKey) return;
+      const url = new URL(a.href, location.href);
+      if (url.origin !== location.origin) return;
+      if (url.pathname === location.pathname && url.hash) return;
+      e.preventDefault();
+      navTo = url.href;
+      target = 1;
+    });
+  } else {
+    wrap.style.display = "none";
+  }
+</script>

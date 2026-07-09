@@ -1,0 +1,22 @@
+---
+import Base from "../layouts/Base.astro";
+import AsciiHero from "../components/AsciiHero.astro";
+---
+<Base title="Portfolio | Jacques">
+  <main class="page">
+    <div class="eyebrow">Portfolio</div>
+    <h1>Projects</h1>
+    <div class="banner"><AsciiHero scene={2} /></div>
+    <p class="empty">
+      Projects are coming soon — in the meantime, everything lives on
+      <a class="ln" href="https://github.com/Jacqkues">GitHub</a>.
+    </p>
+  </main>
+</Base>
+
+<style>
+  .banner { height: 240px; border: 1px solid var(--line); margin: 2.5rem 0; }
+  .empty { color: var(--dim); }
+  .ln { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
+  .ln:hover { text-decoration-color: var(--ink); }
+</style>

@@ -1,0 +1,39 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog");
+  const tags = new Set(posts.flatMap((p) => p.data.tags.map((t) => t.toLowerCase())));
+  return [...tags].map((tag) => ({
+    params: { tag },
+    props: { posts: posts.filter((p) => p.data.tags.some((t) => t.toLowerCase() === tag)) },
+  }));
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+const fmt = (d: Date) =>
+  d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+---
+<Base title={`#${tag} | Jacques`}>
+  <main class="page">
+  <div class="eyebrow">Tag Archive</div>
+  <h1>#{tag}</h1>
+  <ul class="list">
+    {posts.map((p) => (
+      <li>
+        <a class="post-link" href={`/blog/${p.id}`}>{p.data.title}</a>
+        <span class="post-meta">{fmt(p.data.publishDate)}</span>
+      </li>
+    ))}
+  </ul>
+  </main>
+</Base>
+
+<style>
+  .list { list-style: none; padding: 0; margin-top: 1.5rem; }
+  .list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.8rem 0; border-top: 1px solid var(--line); }
+  .post-link { font-weight: 500; text-decoration: none; }
+  .post-link:hover { color: var(--accent); }
+</style>

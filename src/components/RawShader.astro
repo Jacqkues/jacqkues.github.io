@@ -1,0 +1,25 @@
+---
+// Shader plein cadre, pleine résolution — sans le pipeline ASCII.
+interface Props { scene?: number; seed?: number; trailRad?: number }
+const { scene = 0, seed = 0, trailRad = 0.11 } = Astro.props;
+---
+<div class="canvas-container raw-shader" data-raw-scene={scene} data-raw-seed={seed} data-raw-trailrad={trailRad}>
+  <canvas></canvas>
+</div>
+
+<style>
+  .canvas-container {
+    position: relative; width: 100%; height: 100%;
+    opacity: 0; transition: opacity 1s ease-in-out; will-change: opacity;
+    background: #000; cursor: crosshair;
+  }
+  .canvas-container.active { opacity: 1; }
+  .canvas-container canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+
+<script>
+  import { initRaw } from "../scripts/raw";
+  for (const el of document.querySelectorAll<HTMLElement>(".raw-shader[data-raw-scene]")) {
+    initRaw(el, Number(el.dataset.rawScene || 0), Number(el.dataset.rawSeed || 0), Number(el.dataset.rawTrailrad || 0.11));
+  }
+</script>
