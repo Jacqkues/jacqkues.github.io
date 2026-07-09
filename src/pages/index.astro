@@ -16,7 +16,6 @@ const fmt = (d: Date) =>
       <div class="hero-copy">
         <h1>Jacques Dumora.<br />ML &amp; Data Engineer.</h1>
       </div>
-      <div class="hint">Bougez le curseur ↺</div>
     </section>
 
     <section class="page">
@@ -58,13 +57,7 @@ const fmt = (d: Date) =>
     color: var(--ink);
     text-shadow: 0 0 30px rgba(0, 0, 0, 0.85);
   }
-  .hint {
-    position: absolute; right: clamp(1rem, 3vw, 2rem); bottom: 2.2rem; z-index: 5;
-    pointer-events: none; font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
-    color: var(--dim); animation: pulse 2.4s ease-in-out infinite;
-  }
   @keyframes pulse { 50% { opacity: 0.35; } }
-  @media (prefers-reduced-motion: reduce) { .hint { animation: none; } }
 
   .statement { font-size: clamp(1.1rem, 2.2vw, 1.6rem); line-height: 1.45; max-width: 52rem; color: #d6d4cf; }
   .statement strong { color: var(--ink); font-weight: 300; }

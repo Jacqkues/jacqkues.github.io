@@ -34,8 +34,8 @@ const path = Astro.url.pathname;
     <InkWipe />
     <header class="site-header">
       <nav>
-        <a class="brand" href="/">JACQUES — DUMORA</a>
         <div class="links">
+          <a href="/" aria-current={path === "/" ? "page" : undefined}>Home</a>
           {nav.map((n) => (
             <a href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</a>
           ))}
@@ -97,11 +97,10 @@ const path = Astro.url.pathname;
     mix-blend-mode: difference;
   }
   .site-header nav {
-    display: flex; justify-content: space-between; align-items: baseline;
+    display: flex; justify-content: flex-end; align-items: baseline;
     padding: 1.1rem clamp(1rem, 3vw, 2rem);
     font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
   }
-  .brand { color: #fff; }
   .links { display: flex; gap: 1.4rem; }
   .links a { color: #999; transition: color 0.2s; }
   .links a:hover, .links a[aria-current="page"] { color: #fff; }
