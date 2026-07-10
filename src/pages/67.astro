@@ -48,7 +48,7 @@ import Base from "../layouts/Base.astro";
     overflow: hidden;
   }
   video { display: none; }
-  canvas { width: 100%; height: 100%; display: block; filter: grayscale(1) contrast(1.05); }
+  canvas { width: 100%; height: 100%; display: block; }
 
   .hud {
     position: absolute; inset: 0; pointer-events: none;
@@ -154,7 +154,6 @@ import Base from "../layouts/Base.astro";
 (() => {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
   const timerEl = document.getElementById('timer');
   const countEl = document.getElementById('count');
   const statusEl = document.getElementById('status');
@@ -169,6 +168,7 @@ import Base from "../layouts/Base.astro";
   // Écart vertical minimal (fraction de la hauteur image) entre les 2 mains
   // pour valider une position haute/basse — filtre le bruit.
   const GAP = 0.10;
+  const MAX_DROPS = 24;
 
   let running = false;
   let count = 0;
@@ -176,6 +176,7 @@ import Base from "../layouts/Base.astro";
   let lastPose = null; // 'L' = gauche en haut, 'R' = droite en haut
   let latestHands = [];
 
+  // ---------- Leaderboard ----------
   function loadBoard() {
     const scores = JSON.parse(localStorage.getItem('scores67') || '[]');
     scores.sort((a, b) => b.score - a.score);
@@ -195,26 +196,200 @@ import Base from "../layouts/Base.astro";
   resetBtn.onclick = () => { localStorage.removeItem('scores67'); loadBoard(); };
   loadBoard();
 
-  const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-  hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
-  hands.onResults(results => {
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  // ---------- WebGL : vidéo + ondes liquides qui suivent les mains ----------
+  const gl = canvas.getContext('webgl', { antialias: false });
+  const VERT = `
+    attribute vec2 aPos;
+    varying vec2 vUv;
+    void main() {
+      vUv = aPos * 0.5 + 0.5;
+      gl_Position = vec4(aPos, 0.0, 1.0);
+    }`;
+  const FRAG = `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D uTex;
+    uniform float uTime;
+    uniform float uAspect;
+    uniform vec2 uHands[2];
+    uniform int uHandCount;
+    uniform vec4 uDrops[${MAX_DROPS}]; // x, y (origine haut-gauche, miroir), naissance, amplitude
+    uniform float uEnergy; // 0 → calme, 1 → furie (cadence des reps)
+
+    void main() {
+      // coordonnées écran, origine haut-gauche (comme MediaPipe, déjà en miroir)
+      vec2 s = vec2(vUv.x, 1.0 - vUv.y);
+
+      vec2 disp = vec2(0.0);
+      float crest = 0.0;
+
+      // gouttes : anneaux qui s'étendent et s'amortissent, réfraction de la vidéo
+      for (int i = 0; i < ${MAX_DROPS}; i++) {
+        float birth = uDrops[i].z;
+        if (birth < 0.0) continue;
+        float t = uTime - birth;
+        if (t > 2.2) continue;
+        float amp = uDrops[i].w;
+        vec2 p = s - uDrops[i].xy;
+        p.x *= uAspect;
+        float d = length(p);
+        float r = 0.06 + t * 0.38;
+        float ring = exp(-abs(d - r) * 34.0) * exp(-t * 2.4);
+        float boost = 1.0 + uEnergy * 1.6;
+        disp += normalize(p + 1e-5) * sin((d - r) * 90.0) * ring * 0.028 * amp * boost;
+        crest += ring * amp * 0.55 * boost;
+      }
+
+      // halo liquide permanent sous chaque paume — gonfle avec l'énergie
+      for (int i = 0; i < 2; i++) {
+        if (i >= uHandCount) break;
+        vec2 p = s - uHands[i];
+        p.x *= uAspect;
+        float d = length(p);
+        float g = exp(-d * d * (90.0 - uEnergy * 55.0));
+        float amp2 = 0.010 + uEnergy * 0.020;
+        disp += vec2(sin(uTime * 4.0 + d * 40.0), cos(uTime * 3.3 + d * 34.0)) * g * amp2;
+        crest += g * (0.30 + uEnergy * 0.55);
+      }
+
+      // haute énergie : toute l'image ondule
+      float wob = uEnergy * uEnergy;
+      disp += vec2(
+        sin(s.y * 22.0 + uTime * 9.0),
+        cos(s.x * 19.0 + uTime * 8.0)
+      ) * wob * 0.012;
+
+      // échantillonnage miroir + réfraction
+      vec2 tuv = vec2(1.0 - (s.x + disp.x), s.y + disp.y);
+      tuv = clamp(tuv, 0.001, 0.999);
+      vec3 col = texture2D(uTex, tuv).rgb;
+
+      // noir & blanc — le contraste durcit avec l'énergie
+      float g = dot(col, vec3(0.299, 0.587, 0.114));
+      g = pow(g, 1.15 + uEnergy * 0.9) * (1.06 + uEnergy * 0.35);
+
+      // battement global à haute énergie
+      g *= 1.0 + sin(uTime * 14.0) * uEnergy * uEnergy * 0.12;
+
+      // crêtes blanches des ondes + vignettage qui se resserre
+      vec2 vc = vUv - 0.5;
+      float vig = 1.0 - dot(vc, vc) * (0.55 + uEnergy * 0.9);
+      float outv = clamp(g * vig + crest, 0.0, 1.0);
+      gl_FragColor = vec4(vec3(outv), 1.0);
+    }`;
+
+  function compile(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  const U = n => gl.getUniformLocation(prog, n);
+  const uTime = U('uTime'), uAspect = U('uAspect'), uHandsLoc = U('uHands'),
+        uHandCount = U('uHandCount'), uDropsLoc = U('uDrops'), uEnergyLoc = U('uEnergy');
+
+  // Énergie : cadence des reps sur les 3 dernières secondes.
+  // ~1 rep/s → faible, 4+ reps/s → furie. Lissée pour monter vite, retomber doux.
+  const repTimes = [];
+  let energy = 0;
+  function currentEnergy() {
+    const t = now();
+    while (repTimes.length && t - repTimes[0] > 3) repTimes.shift();
+    const rate = repTimes.length / 3; // reps par seconde
+    const target = Math.min(1, rate / 4);
+    energy += (target - energy) * (target > energy ? 0.12 : 0.015);
+    return energy;
+  }
+
+  // gouttes : tampon circulaire, x/y écran (miroir, origine haut-gauche), naissance, amplitude
+  const drops = new Float32Array(MAX_DROPS * 4).fill(-1);
+  let dropIdx = 0;
+  const t0 = performance.now();
+  const now = () => (performance.now() - t0) / 1000;
+
+  function spawnDrop(x, y, amp) {
+    drops[dropIdx * 4] = x;
+    drops[dropIdx * 4 + 1] = y;
+    drops[dropIdx * 4 + 2] = now();
+    drops[dropIdx * 4 + 3] = amp;
+    dropIdx = (dropIdx + 1) % MAX_DROPS;
+  }
+
+  // gouttelettes quand la main bouge vite
+  const prevHands = [null, null];
+  const lastSpawn = [0, 0];
+  function trackHandDrops(hands) {
+    const t = now();
+    for (let i = 0; i < hands.length && i < 2; i++) {
+      const h = hands[i];
+      const prev = prevHands[i];
+      if (prev) {
+        const speed = Math.hypot(h.sx - prev.sx, h.sy - prev.sy);
+        if (speed > 0.02 && t - lastSpawn[i] > 0.12) {
+          spawnDrop(h.sx, h.sy, Math.min(1.0, speed * 18));
+          lastSpawn[i] = t;
+        }
+      }
+      prevHands[i] = h;
+    }
+    for (let i = hands.length; i < 2; i++) prevHands[i] = null;
+  }
+
+  function render(image, hands) {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.uniform1f(uTime, now());
+    gl.uniform1f(uAspect, canvas.width / canvas.height);
+    const hArr = new Float32Array(4);
+    for (let i = 0; i < hands.length && i < 2; i++) { hArr[i*2] = hands[i].sx; hArr[i*2+1] = hands[i].sy; }
+    gl.uniform2fv(uHandsLoc, hArr);
+    gl.uniform1i(uHandCount, Math.min(hands.length, 2));
+    gl.uniform4fv(uDropsLoc, drops);
+    gl.uniform1f(uEnergyLoc, currentEnergy());
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  // ---------- MediaPipe ----------
+  const mpHands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  mpHands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+  mpHands.onResults(results => {
     latestHands = [];
     if (results.multiHandLandmarks) {
       for (const lm of results.multiHandLandmarks) {
-        latestHands.push({ x: (lm[0].x + lm[9].x) / 2, y: (lm[0].y + lm[9].y) / 2 });
-        drawHand(lm);
+        const x = (lm[0].x + lm[9].x) / 2;
+        const y = (lm[0].y + lm[9].y) / 2;
+        // sx/sy : coordonnées écran (image en miroir)
+        latestHands.push({ x, y, sx: 1 - x, sy: y });
       }
     }
-    ctx.restore();
+    trackHandDrops(latestHands);
+    render(results.image, latestHands);
     if (running) detectRep();
   });
   const camera = new Camera(video, {
-    onFrame: async () => { await hands.send({ image: video }); },
+    onFrame: async () => { await mpHands.send({ image: video }); },
     width: 960, height: 720
   });
   camera.start().then(() => {
@@ -224,41 +399,25 @@ import Base from "../layouts/Base.astro";
     statusEl.textContent = 'Caméra inaccessible — autorise la webcam et recharge';
   });
 
-  function drawHand(lm) {
-    const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],
-      [10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 2;
-    for (const [a, b] of CONN) {
-      ctx.beginPath();
-      ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
-      ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#fff';
-    for (const p of lm) {
-      ctx.beginPath();
-      ctx.arc(p.x * canvas.width, p.y * canvas.height, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
   // Un rep = les deux mains inversent leur position verticale (le geste 6-7).
   function detectRep() {
     if (latestHands.length < 2) { statusEl.textContent = 'Montre tes deux mains'; return; }
     statusEl.textContent = 'Go';
 
     const [a, b] = latestHands;
-    const left  = a.x < b.x ? a : b;
-    const right = a.x < b.x ? b : a;
+    const left  = a.sx < b.sx ? a : b;
+    const right = a.sx < b.sx ? b : a;
 
     let pose = null;
-    if (left.y < right.y - GAP) pose = 'L';
-    else if (right.y < left.y - GAP) pose = 'R';
+    if (left.sy < right.sy - GAP) pose = 'L';
+    else if (right.sy < left.sy - GAP) pose = 'R';
 
     if (pose && lastPose && pose !== lastPose) {
       count++;
       countEl.textContent = count;
+      repTimes.push(now());
+      // onde de choc au centre des deux mains, amplifiée par l'énergie
+      spawnDrop((left.sx + right.sx) / 2, (left.sy + right.sy) / 2, 2.2 + energy * 2.0);
       flashEl.classList.remove('show');
       void flashEl.offsetWidth;
       flashEl.classList.add('show');
@@ -267,6 +426,7 @@ import Base from "../layouts/Base.astro";
     if (pose) lastPose = pose;
   }
 
+  // ---------- Timer / run ----------
   startBtn.onclick = () => {
     const name = nameInput.value.trim() || 'Anonyme';
     count = 0;
@@ -292,8 +452,8 @@ import Base from "../layouts/Base.astro";
       }
     }, 1000);
 
-    function tick(now) {
-      const remaining = Math.max(0, endTime - now);
+    function tick(t) {
+      const remaining = Math.max(0, endTime - t);
       timerEl.textContent = (remaining / 1000).toFixed(1);
       if (remaining > 0 && running) {
         requestAnimationFrame(tick);
