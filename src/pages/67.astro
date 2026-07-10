@@ -1,0 +1,311 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="67 Tournament — Jacques" description="Compteur de six-sevens en computer vision — 30 secondes, tournoi.">
+  <main>
+    <div class="page">
+      <p class="eyebrow">Computer vision — 30 seconds</p>
+      <h1>67 Tournament</h1>
+      <p class="sub">Deux mains face caméra. Alterne haut / bas. Chaque inversion compte pour un six-seven.</p>
+
+      <div class="stage">
+        <video id="video" playsinline></video>
+        <canvas id="canvas" width="960" height="720"></canvas>
+        <div class="hud">
+          <div class="hud-top">
+            <div class="metric"><span class="label">Time</span><span class="value" id="timer">30.0</span></div>
+            <div class="metric right"><span class="label">Six sevens</span><span class="value" id="count">0</span></div>
+          </div>
+          <div class="status" id="status">Chargement du modèle…</div>
+        </div>
+        <div class="flash" id="flash">67</div>
+      </div>
+
+      <div class="controls">
+        <input type="text" id="playerName" placeholder="Nom du joueur" maxlength="20" aria-label="Nom du joueur" />
+        <button id="startBtn" disabled>Start</button>
+      </div>
+
+      <div class="board">
+        <h2>Leaderboard <button id="resetBtn">Reset</button></h2>
+        <ol id="board"></ol>
+        <div class="empty" id="emptyMsg">Aucun score — sois le premier.</div>
+      </div>
+    </div>
+  </main>
+</Base>
+
+<style>
+  .page { max-width: 46rem; }
+  .sub { color: var(--dim); font-size: 0.85rem; margin: 0.4rem 0 2.2rem; }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    border: 1px solid var(--line);
+    background: #0c0c0c;
+    overflow: hidden;
+  }
+  video { display: none; }
+  canvas { width: 100%; height: 100%; display: block; filter: grayscale(1) contrast(1.05); }
+
+  .hud {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .hud-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 0.9rem 1.1rem;
+    mix-blend-mode: difference;
+  }
+  .metric { font-variant-numeric: tabular-nums; }
+  .metric .label {
+    display: block; font-size: 0.62rem; letter-spacing: 0.22em;
+    text-transform: uppercase; color: #bbb;
+  }
+  .metric .value { font-size: 2.1rem; line-height: 1.1; color: #fff; }
+  .metric.right { text-align: right; }
+  .status {
+    padding: 0.7rem 1.1rem;
+    font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--dim);
+    border-top: 1px solid var(--line);
+    background: rgba(0,0,0,0.55);
+  }
+  .flash {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(5rem, 20vw, 9rem);
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    opacity: 0;
+    mix-blend-mode: difference;
+  }
+  .flash.show { animation: pop 0.32s ease-out; }
+  @keyframes pop {
+    0% { opacity: 1; transform: scale(0.6); }
+    100% { opacity: 0; transform: scale(1.25); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flash.show { animation: none; opacity: 0; }
+  }
+
+  .controls {
+    display: flex; gap: 0; margin: 1.6rem 0 3rem;
+    border: 1px solid var(--line);
+  }
+  input[type="text"] {
+    flex: 1; min-width: 0;
+    background: transparent; color: var(--ink);
+    border: none; outline: none;
+    font-family: var(--mono); font-weight: 300; font-size: 0.85rem;
+    padding: 0.85rem 1.1rem;
+    letter-spacing: 0.05em;
+  }
+  input[type="text"]::placeholder { color: var(--subtle); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.18em; }
+  button {
+    font-family: var(--mono); font-weight: 300;
+    font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.85rem 1.6rem;
+    cursor: pointer;
+    background: transparent; color: var(--dim);
+    border: none; border-left: 1px solid var(--line);
+    transition: color 0.2s, background 0.2s;
+  }
+  button:hover:not(:disabled) { color: var(--bg); background: var(--ink); }
+  button:focus-visible { outline: 1px solid var(--ink); outline-offset: -3px; color: var(--ink); }
+  button:disabled { color: var(--line); cursor: not-allowed; }
+  #startBtn { color: var(--ink); }
+
+  .board h2 {
+    font-weight: 300; font-size: 0.68rem; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--dim);
+    border-top: 1px solid var(--line);
+    padding-top: 1.4rem; margin-bottom: 1rem;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .board h2 button { border: 1px solid var(--subtle); padding: 0.25rem 0.8rem; font-size: 0.62rem; }
+  .board ol { list-style: none; padding: 0; counter-reset: rank; }
+  .board :global(li) {
+    counter-increment: rank;
+    display: flex; align-items: baseline; gap: 1rem;
+    padding: 0.55rem 0.2rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.85rem;
+  }
+  .board :global(li)::before {
+    content: counter(rank, decimal-leading-zero);
+    color: var(--subtle); font-size: 0.72rem; letter-spacing: 0.1em;
+  }
+  .board :global(.name) { flex: 1; letter-spacing: 0.05em; }
+  .board :global(.score) { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .board :global(li:first-child .name)::after {
+    content: "best"; margin-left: 0.8rem;
+    font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--dim); border: 1px solid var(--subtle); padding: 0.1rem 0.5rem;
+  }
+  .empty { color: var(--subtle); font-size: 0.8rem; padding: 0.4rem 0.2rem; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" is:inline></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" is:inline></script>
+<script is:inline>
+(() => {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const timerEl = document.getElementById('timer');
+  const countEl = document.getElementById('count');
+  const statusEl = document.getElementById('status');
+  const flashEl = document.getElementById('flash');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const boardEl = document.getElementById('board');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const nameInput = document.getElementById('playerName');
+
+  const DURATION = 30000;
+  // Écart vertical minimal (fraction de la hauteur image) entre les 2 mains
+  // pour valider une position haute/basse — filtre le bruit.
+  const GAP = 0.10;
+
+  let running = false;
+  let count = 0;
+  let endTime = 0;
+  let lastPose = null; // 'L' = gauche en haut, 'R' = droite en haut
+  let latestHands = [];
+
+  function loadBoard() {
+    const scores = JSON.parse(localStorage.getItem('scores67') || '[]');
+    scores.sort((a, b) => b.score - a.score);
+    boardEl.innerHTML = scores.slice(0, 10).map(s =>
+      `<li><span class="name">${escapeHtml(s.name)}</span><span class="score">${s.score}</span></li>`).join('');
+    emptyMsg.style.display = scores.length ? 'none' : 'block';
+  }
+  function saveScore(name, score) {
+    const scores = JSON.parse(localStorage.getItem('scores67') || '[]');
+    scores.push({ name, score, date: Date.now() });
+    localStorage.setItem('scores67', JSON.stringify(scores));
+    loadBoard();
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  resetBtn.onclick = () => { localStorage.removeItem('scores67'); loadBoard(); };
+  loadBoard();
+
+  const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+  hands.onResults(results => {
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+    latestHands = [];
+    if (results.multiHandLandmarks) {
+      for (const lm of results.multiHandLandmarks) {
+        latestHands.push({ x: (lm[0].x + lm[9].x) / 2, y: (lm[0].y + lm[9].y) / 2 });
+        drawHand(lm);
+      }
+    }
+    ctx.restore();
+    if (running) detectRep();
+  });
+  const camera = new Camera(video, {
+    onFrame: async () => { await hands.send({ image: video }); },
+    width: 960, height: 720
+  });
+  camera.start().then(() => {
+    statusEl.textContent = 'Prêt — deux mains face caméra';
+    startBtn.disabled = false;
+  }).catch(() => {
+    statusEl.textContent = 'Caméra inaccessible — autorise la webcam et recharge';
+  });
+
+  function drawHand(lm) {
+    const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],
+      [10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2;
+    for (const [a, b] of CONN) {
+      ctx.beginPath();
+      ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
+      ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#fff';
+    for (const p of lm) {
+      ctx.beginPath();
+      ctx.arc(p.x * canvas.width, p.y * canvas.height, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Un rep = les deux mains inversent leur position verticale (le geste 6-7).
+  function detectRep() {
+    if (latestHands.length < 2) { statusEl.textContent = 'Montre tes deux mains'; return; }
+    statusEl.textContent = 'Go';
+
+    const [a, b] = latestHands;
+    const left  = a.x < b.x ? a : b;
+    const right = a.x < b.x ? b : a;
+
+    let pose = null;
+    if (left.y < right.y - GAP) pose = 'L';
+    else if (right.y < left.y - GAP) pose = 'R';
+
+    if (pose && lastPose && pose !== lastPose) {
+      count++;
+      countEl.textContent = count;
+      flashEl.classList.remove('show');
+      void flashEl.offsetWidth;
+      flashEl.classList.add('show');
+      flashEl.textContent = count % 2 ? '6' : '7';
+    }
+    if (pose) lastPose = pose;
+  }
+
+  startBtn.onclick = () => {
+    const name = nameInput.value.trim() || 'Anonyme';
+    count = 0;
+    countEl.textContent = '0';
+    lastPose = null;
+    startBtn.disabled = true;
+    nameInput.disabled = true;
+
+    let cd = 3;
+    statusEl.textContent = '';
+    flashEl.textContent = cd;
+    flashEl.classList.remove('show'); void flashEl.offsetWidth; flashEl.classList.add('show');
+    const cdInt = setInterval(() => {
+      cd--;
+      if (cd > 0) {
+        flashEl.textContent = cd;
+        flashEl.classList.remove('show'); void flashEl.offsetWidth; flashEl.classList.add('show');
+      } else {
+        clearInterval(cdInt);
+        running = true;
+        endTime = performance.now() + DURATION;
+        requestAnimationFrame(tick);
+      }
+    }, 1000);
+
+    function tick(now) {
+      const remaining = Math.max(0, endTime - now);
+      timerEl.textContent = (remaining / 1000).toFixed(1);
+      if (remaining > 0 && running) {
+        requestAnimationFrame(tick);
+      } else {
+        running = false;
+        timerEl.textContent = '0.0';
+        statusEl.textContent = `Terminé — ${name} : ${count} six-sevens`;
+        saveScore(name, count);
+        startBtn.disabled = false;
+        nameInput.disabled = false;
+      }
+    }
+  };
+})();
+</script>
