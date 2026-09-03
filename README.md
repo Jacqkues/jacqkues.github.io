@@ -41,3 +41,7 @@ All commands are run from the root of the project, from a terminal:
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+
+## Scope (hackathon demo)
+
+`scope/` is a separate Vite + React app, built by the same workflow and served at https://jacqkues.github.io/scope/ . See `scope/README.md`.

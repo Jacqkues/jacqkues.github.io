@@ -16,10 +16,39 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install, build, and upload
-        uses: withastro/action@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            scope/package-lock.json
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build blog (Astro)
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Scope (Vite, served under /scope/)
+        working-directory: scope
+        run: |
+          npm ci
+          npm run build
+
+      - name: Merge Scope into the Pages artifact
+        run: |
+          mkdir -p dist/scope
+          cp -R scope/dist/. dist/scope/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
 
   deploy:
     needs: build
