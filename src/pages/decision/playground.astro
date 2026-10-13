@@ -101,6 +101,7 @@ import Base from "../../layouts/Base.astro";
     font-family: var(--mono); font-weight: 300; font-size: 0.78rem; line-height: 1.55; letter-spacing: normal;
     white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2;
   }
+  .editor code { font: inherit; } /* the site sets another monospace on code: the caret would drift */
   .editor pre { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--ink); }
   .editor textarea {
     position: relative; display: block; width: 100%; min-height: 17rem; resize: none; overflow: hidden;
