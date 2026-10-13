@@ -144,7 +144,7 @@ import Base from "../../layouts/Base.astro";
 
 <script>
   import { Decision } from "../../vendor/decision.js";
-  import { cachingFetch, clearCache, isCached } from "../../scripts/model-cache";
+  import { cachingFetch, clearCache, isCached, partial } from "../../scripts/model-cache";
 
   const MODEL = "https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/60e671d0250ef3de39247b5f2ddd0734750b30de/"; // a commit: the cache never goes stale
   const CACHE = "decisionjs-d3-lite-q8";
@@ -295,7 +295,7 @@ import Base from "../../layouts/Base.astro";
       });
     } catch (e) {
       status.textContent = `Could not load the model: ${(e as Error).message}`;
-      load.hidden = false;
+      await offerResume();
       return;
     }
     meter.hidden = true;
@@ -304,6 +304,14 @@ import Base from "../../layouts/Base.astro";
     forget.hidden = !(await isCached(CACHE, MODEL + "weights.bin"));
     run.disabled = bench.disabled = false;
     run.click();
+  }
+
+  /** After a download stopped halfway: offers to resume it, keeping the parts already on disk. */
+  async function offerResume() {
+    const { loaded, total } = await partial(CACHE, MODEL + "weights.bin");
+    load.textContent = loaded ? `Resume download · ${(loaded / 1e6).toFixed(0)} / ${(total / 1e6).toFixed(0)} MB` : "Load the model · 803 MB";
+    load.hidden = false;
+    return loaded > 0;
   }
 
   load.onclick = start;
@@ -318,5 +326,5 @@ import Base from "../../layouts/Base.astro";
   if (!adapter) status.textContent = "This browser has no WebGPU · try a recent Chrome or Edge";
   else if (!adapter.features.has("shader-f16") || !adapter.features.has("subgroups")) status.textContent = "This GPU lacks WebGPU f16 or subgroups, which d3-lite needs";
   else if (await isCached(CACHE, MODEL + "weights.bin")) start();
-  else { status.textContent = "Ready to download d3-lite once (803 MB), then it stays cached"; load.hidden = false; }
+  else if (!(await offerResume())) { status.textContent = "Ready to download d3-lite once (803 MB), then it stays cached"; load.hidden = false; }
 </script>
