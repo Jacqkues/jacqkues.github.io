@@ -12,7 +12,7 @@ import Base from "../../layouts/Base.astro";
         <div class="model-row">
           <span id="status">Checking WebGPU…</span>
           <span class="model-actions">
-            <button id="load" hidden>Load the model · 803 MB</button>
+            <button id="load" class="primary" hidden>Load the model · 803 MB</button>
             <button id="forget" class="quiet" hidden>Remove from cache</button>
           </span>
         </div>
@@ -22,8 +22,8 @@ import Base from "../../layouts/Base.astro";
       <div class="presets" id="presets"></div>
 
       <div class="grid">
-        <label class="field"><span>State · text or JSON</span><textarea id="state" spellcheck="false"></textarea></label>
-        <label class="field"><span>Questions · Decision Index schema</span><textarea id="questions" spellcheck="false"></textarea></label>
+        <div class="field"><label for="state">State · text or JSON</label><div class="editor"><pre aria-hidden="true"><code id="stateHl"></code></pre><textarea id="state" spellcheck="false"></textarea></div></div>
+        <div class="field"><label for="questions">Questions · Decision Index schema</label><div class="editor"><pre aria-hidden="true"><code id="questionsHl"></code></pre><textarea id="questions" spellcheck="false"></textarea></div></div>
       </div>
 
       <div class="controls">
@@ -52,17 +52,18 @@ import Base from "../../layouts/Base.astro";
 
   button {
     font-family: var(--mono); font-weight: 300;
-    font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
-    padding: 0.75rem 1.3rem; cursor: pointer;
-    background: transparent; color: var(--dim);
-    border: 1px solid var(--line);
+    font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.85rem 1.4rem; cursor: pointer;
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--dim);
     transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
-  button:hover:not(:disabled) { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  button:hover:not(:disabled) { border-color: var(--ink); background: #161616; }
   button:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
-  button:disabled { color: var(--subtle); cursor: not-allowed; }
-  button.primary:not(:disabled) { color: var(--ink); border-color: var(--ink); }
-  button.quiet { border-color: transparent; padding-inline: 0.6rem; }
+  button:disabled { color: var(--subtle); border-color: var(--line); cursor: not-allowed; }
+  button.primary:not(:disabled) { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button.primary:hover:not(:disabled) { background: transparent; color: var(--ink); }
+  button.quiet { border-color: transparent; padding-inline: 0.6rem; color: var(--dim); }
 
   .model { border: 1px solid var(--line); margin-bottom: 1.6rem; }
   .model-row {
@@ -87,18 +88,28 @@ import Base from "../../layouts/Base.astro";
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 46rem) { .grid { grid-template-columns: 1fr; } }
-  .field span {
+  .field label {
     display: block; margin-bottom: 0.5rem;
     font-size: 0.64rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim);
   }
-  textarea {
-    width: 100%; min-height: 17rem; resize: vertical;
-    background: #0c0c0c; color: var(--ink);
-    border: 1px solid var(--line); outline: none;
-    padding: 0.9rem 1rem;
-    font-family: var(--mono); font-weight: 300; font-size: 0.78rem; line-height: 1.55;
+  /* a transparent textarea over its highlighted copy; it grows with its text, so the two never scroll apart */
+  .editor { position: relative; background: #0c0c0c; border: 1px solid var(--line); }
+  .editor:focus-within { border-color: var(--subtle); }
+  .editor pre, .editor textarea {
+    margin: 0; padding: 0.9rem 1rem; border: 0;
+    font-family: var(--mono); font-weight: 300; font-size: 0.78rem; line-height: 1.55; letter-spacing: normal;
+    white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2;
   }
-  textarea:focus { border-color: var(--subtle); }
+  .editor pre { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--ink); }
+  .editor textarea {
+    position: relative; display: block; width: 100%; min-height: 17rem; resize: none; overflow: hidden;
+    background: transparent; color: transparent; caret-color: var(--ink); outline: none;
+  }
+  .editor textarea::selection { background: rgba(255, 255, 255, 0.22); }
+  .editor :global(.k) { color: #d6d4cf; }
+  .editor :global(.s) { color: #6fbfb0; }
+  .editor :global(.n) { color: #e0914f; }
+  .editor :global(.p) { color: #6a6a6a; }
 
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 1.2rem; }
   .toggle { display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.78rem; color: var(--dim); }
@@ -174,10 +185,37 @@ import Base from "../../layouts/Base.astro";
     },
   };
 
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+  // JSON highlighting for the two editors (plain text stays plain)
+  const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}\[\],:]/g;
+  function highlight(src: string): string {
+    if (!/^\s*[[{"]/.test(src)) return esc(src);
+    let out = "", last = 0;
+    for (const m of src.matchAll(TOKEN)) {
+      out += esc(src.slice(last, m.index));
+      if (m[2]) out += `<span class="k">${esc(m[1]!)}</span><span class="p">${esc(m[2])}</span>`;
+      else out += `<span class="${m[1] ? "s" : /^[{}[\],:]$/.test(m[0]) ? "p" : "n"}">${esc(m[0])}</span>`;
+      last = m.index! + m[0].length;
+    }
+    return out + esc(src.slice(last));
+  }
+  const editors = [state, questions].map((t) => ({ t, hl: $(`${t.id}Hl`) }));
+  function paint() {
+    for (const { t, hl } of editors) {
+      hl.innerHTML = highlight(t.value) + "\n"; // a trailing newline would otherwise collapse
+      t.style.height = "auto";
+      t.style.height = `${t.scrollHeight}px`;
+    }
+  }
+  for (const { t } of editors) t.addEventListener("input", paint);
+  addEventListener("resize", paint);
+
   function show(name: string) {
     const p = presets[name]!;
     state.value = typeof p.state === "string" ? p.state : JSON.stringify(p.state, null, 2);
     questions.value = JSON.stringify(p.questions, null, 2);
+    paint();
     document.querySelectorAll<HTMLButtonElement>("#presets button").forEach((b) => b.setAttribute("aria-pressed", String(b.textContent === name)));
   }
   for (const name of Object.keys(presets)) {
@@ -188,7 +226,6 @@ import Base from "../../layouts/Base.astro";
   }
   show("Support ticket");
 
-  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const bars = (probs: Record<string, number>, best: string) =>
     Object.entries(probs).map(([k, p]) => `<div class="row${k === best ? " best" : ""}"><span title="${esc(k)}">${esc(k)}</span><div class="track"><div class="fill" style="width:${(100 * p).toFixed(1)}%"></div></div><span class="num">${(100 * p).toFixed(1)}%</span></div>`).join("");
   function render(name: string, a: Answer) {

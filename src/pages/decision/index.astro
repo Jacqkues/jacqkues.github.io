@@ -1,7 +1,7 @@
 ---
 import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
-import RawShader from "../../components/RawShader.astro";
+import DecisionDemo from "../../components/DecisionDemo.astro";
 
 // The site's greys, with the warm and teal accents of its ASCII banner.
 const theme = {
@@ -41,10 +41,9 @@ const { answers } = await d3.systemOne(ticket, {
 // answers.churn   → { noul: 0.83 }                     P(yes)
 // answers.urgency → { score: 1.16, legend: { 0: "low", 1: "medium", 2: "high" } }`;
 ---
-<Base title="decision.js — Jacques" description="decision.js: small decision models (d1, d3-lite, Laya) running in the browser on WebGPU. Typed decisions over any text or JSON, in one forward pass, with no server." fullBleed>
+<Base title="decision.js — Jacques" description="decision.js: small decision models (d1, d3-lite, Laya) running in the browser on WebGPU. Typed decisions over any text or JSON, in one forward pass, with no server.">
   <main>
     <section class="hero">
-      <RawShader scene={9} />
       <div class="hero-copy">
         <p class="eyebrow">WebGPU inference engine — TypeScript</p>
         <h1>decision.js</h1>
@@ -55,9 +54,10 @@ const { answers } = await d3.systemOne(ticket, {
         </p>
         <div class="cta">
           <a class="btn primary" href="/decision/playground">View playground →</a>
-          <a class="btn" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">d3-lite weights on Hugging Face</a>
+          <a class="btn" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">Weights on Hugging Face</a>
         </div>
       </div>
+      <DecisionDemo />
     </section>
 
     <div class="page">
@@ -131,27 +131,24 @@ const { answers } = await d3.systemOne(ticket, {
 </Base>
 
 <style>
-  .hero { position: relative; height: min(86svh, 52rem); min-height: 34rem; }
-  .hero-copy {
-    position: absolute; z-index: 5; bottom: clamp(2rem, 6vh, 3.5rem);
-    left: 0; right: 0; max-width: 52rem; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2rem);
-    pointer-events: none;
+  .hero {
+    max-width: 72rem; margin: 0 auto; padding: 7rem clamp(1rem, 3vw, 2rem) 1rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 3.5rem); align-items: center;
   }
-  .hero-copy > * { text-shadow: 0 0 24px rgba(0, 0, 0, 0.9); }
-  .hero-copy h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); letter-spacing: -0.02em; }
-  .hero-copy .cta { pointer-events: auto; }
-  .page { max-width: 52rem; padding-top: 3rem; }
+  @media (max-width: 58rem) { .hero { grid-template-columns: 1fr; padding-top: 6rem; } }
+  .hero-copy h1 { font-size: clamp(2.6rem, 6vw, 4.2rem); letter-spacing: -0.02em; }
+  .page { max-width: 52rem; padding-top: 3.5rem; }
   .lede { color: #d6d4cf; font-size: 1rem; margin: 1rem 0 2rem; max-width: 44rem; }
 
   .cta { display: flex; flex-wrap: wrap; gap: 0.7rem; }
-  .btn { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); }
   .btn {
-    font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
-    padding: 0.85rem 1.4rem; border: 1px solid var(--line); color: var(--dim);
+    font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.95rem 1.5rem; border: 1px solid var(--dim); color: var(--ink);
     transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
-  .btn:hover { color: var(--bg); background: var(--ink); border-color: var(--ink); }
-  .btn.primary { color: var(--ink); border-color: var(--ink); }
+  .btn:hover { border-color: var(--ink); background: #161616; }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn.primary:hover { background: transparent; color: var(--ink); }
 
   .stats {
     display: grid; grid-template-columns: repeat(4, 1fr);
