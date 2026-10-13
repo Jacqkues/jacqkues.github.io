@@ -1,0 +1,141 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const models = [
+  { name: "d1-omni-600M", href: "https://huggingface.co/LiquidAI/d1-omni-600M", weights: "q8 · 405 MB", speed: "34 ms", parity: "63 / 63" },
+  { name: "d1-3B", href: "https://huggingface.co/LiquidAI/d1-3B", weights: "q4 · 1.5 GB", speed: "166 ms", parity: "55 / 63" },
+  { name: "d3-lite", href: "https://huggingface.co/vllm-sr/d3-lite", weights: "q8 · 803 MB", speed: "95 ms · 58 shared", parity: "56 / 56" },
+  { name: "Laya", href: "https://huggingface.co/convaiinnovations/laya", weights: "q8 · 447 MB", speed: "39 ms", parity: "46 / 48" },
+];
+
+const code = `import { Decision } from "./decision.js";
+
+const d3 = await Decision.load("https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/main/");
+const { answers } = await d3.systemOne(ticket, {
+  topic:   { type: "choice", instructions: "What is the topic?",
+             criteria: { billing: "billing, payment", delivery: "delivery", bug: "technical bug" } },
+  churn:   { type: "noul",   instructions: "Is the customer at risk of leaving?" },
+  urgency: { type: "score",  instructions: "How urgent is it?", criteria: ["low", "medium", "high"] },
+});
+// answers.topic   → { choice: "delivery", confidence: 0.96, probabilities: { … } }
+// answers.churn   → { noul: 0.83 }                     P(yes)
+// answers.urgency → { score: 1.16, legend: { 0: "low", 1: "medium", 2: "high" } }`;
+---
+<Base title="decision.js — Jacques" description="decision.js: small decision models (d1, d3-lite, Laya) running in the browser on WebGPU. Typed decisions over any text or JSON, in one forward pass, with no server.">
+  <main>
+    <div class="page">
+      <p class="eyebrow">WebGPU inference engine — TypeScript</p>
+      <h1>decision.js</h1>
+      <p class="lede">
+        Small decision models in the browser, on WebGPU. You give it a state (a support ticket, a form, a log
+        line, any JSON) and typed questions; it answers with calibrated probabilities in one forward pass,
+        with no token generated and nothing sent to a server.
+      </p>
+
+      <div class="cta">
+        <a class="btn primary" href="/decision/playground">View playground →</a>
+        <a class="btn" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">d3-lite weights on Hugging Face</a>
+      </div>
+
+      <dl class="stats">
+        <div><dt>vs LiteRT.js (ML Drift)</dt><dd>2.1× faster</dd></div>
+        <div><dt>d1-omni, per ticket</dt><dd>34 ms</dd></div>
+        <div><dt>Same answer as PyTorch</dt><dd>98.9–99.4%</dd></div>
+        <div><dt>Dependencies</dt><dd>1 tokenizer</dd></div>
+      </dl>
+
+      <article class="prose">
+        <h2>The idea</h2>
+        <p>
+          Decision models like LiquidAI's <strong>d1</strong> or vLLM Semantic Router's <strong>d3-lite</strong> do not chat:
+          they read a state and score the options of a question (yes / no, one of N, a level on a scale). That is one
+          forward pass and a softmax, so a sub-billion-parameter model is enough, and a laptop GPU can run hundreds of
+          decisions per second. decision.js runs them in the page: the data never leaves the browser.
+        </p>
+        <p>
+          The API mirrors the models' own Python API (<code>system_one</code>, <code>probabilities</code>): the same question
+          schema, the same prompts token for token, and the same answers.
+        </p>
+        <pre><code>{code}</code></pre>
+
+        <h2>Models</h2>
+        <p>
+          300 support tickets with 3 questions each (a 7-way choice, a yes/no and a 3-level score), Apple M5 Pro,
+          Chrome, matrix units. Parity: same answer as the original model on a deliberately hard set (empty,
+          nonsensical and forged states, near-ties).
+        </p>
+        <div class="table">
+          <table>
+            <thead><tr><th>Model</th><th>Weights</th><th>Per ticket</th><th>Parity</th></tr></thead>
+            <tbody>
+              {models.map((m) => (
+                <tr><td><a href={m.href}>{m.name}</a></td><td>{m.weights}</td><td>{m.speed}</td><td>{m.parity}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p>
+          On a 465-question sample of the <a href="https://github.com/apolinario/decision-index">Decision Index</a>, d3-lite
+          scores 77.8% in the browser against 77.6% for its official PyTorch runtime, with the same answer 98.9% of the time.
+        </p>
+
+        <h2>Against Google's LiteRT.js</h2>
+        <p>
+          On the same 900 sequences in the same Chrome, decision.js runs d1-omni at <strong>34 ms per ticket</strong> against{" "}
+          <strong>71 ms</strong> for LiteRT.js 2.5.3, whose WebGPU backend is ML Drift. Running d1-omni there at all took a
+          rewritten graph split in four, fp16 weights and an fp16-safe RMSNorm; and its static shapes pad a quarter of the work.
+        </p>
+
+        <h2>How it works</h2>
+        <ul>
+          <li><strong>One command buffer per batch.</strong> Many questions are packed on one token axis with no padding; per-token metadata tells attention and convolution kernels what each token may read.</li>
+          <li><strong>Matrix units.</strong> After ML Drift's design, linear weights are converted once to f16 in 8×8 blocks and the matmul loads them straight into subgroup matrices: 92–94% of what WebGPU reaches on the chip with nothing but multiply-accumulates.</li>
+          <li><strong>Fused kernels.</strong> d3-lite's Gated DeltaNet layer (conv, norms, gates, the recurrence and the gated norm) is a single kernel; SwiGLU runs in the matmul's epilogue.</li>
+          <li><strong>Only what the answer needs.</strong> Logits are computed for the options' tokens only, at the answer slot.</li>
+          <li><strong>Shared state, optionally.</strong> <code>shareState</code> reads a request's state once for all its questions: 95 → 58 ms per d3-lite ticket, at the cost of exactness (77.8% → 76.8% on the Decision Index).</li>
+        </ul>
+
+        <h2>Try it</h2>
+        <p>
+          The <a href="/decision/playground">playground</a> runs d3-lite on your GPU: edit the state and the questions, compare the
+          exact and shared modes, measure the throughput. It needs WebGPU with f16 and subgroups (a recent Chrome or Edge)
+          and downloads the weights once.
+        </p>
+      </article>
+    </div>
+  </main>
+</Base>
+
+<style>
+  .page { max-width: 52rem; }
+  .lede { color: #d6d4cf; font-size: 1rem; margin: 1rem 0 2rem; max-width: 44rem; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-bottom: 2.8rem; }
+  .btn {
+    font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.85rem 1.4rem; border: 1px solid var(--line); color: var(--dim);
+    transition: color 0.2s, background 0.2s, border-color 0.2s;
+  }
+  .btn:hover { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  .btn.primary { color: var(--ink); border-color: var(--ink); }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    margin: 0 0 1rem;
+  }
+  .stats div { padding: 1.1rem 1rem 1.2rem 0; }
+  .stats div + div { border-left: 1px solid var(--line); padding-left: 1rem; }
+  dt { font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.4rem; }
+  dd { margin: 0; font-size: 1.35rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+  @media (max-width: 40rem) {
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stats div:nth-child(3) { border-left: 0; padding-left: 0; }
+    .stats div:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  }
+
+  .table { overflow-x: auto; }
+  .prose table { width: 100%; }
+  .prose td:first-child, .prose th:first-child { text-align: left; }
+  .prose pre { white-space: pre; }
+</style>

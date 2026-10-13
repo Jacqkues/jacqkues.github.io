@@ -1,0 +1,283 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+<Base title="decision.js playground — Jacques" description="d3-lite running in your browser on WebGPU with decision.js: typed decisions over any text or JSON, nothing leaves the page.">
+  <main>
+    <div class="page">
+      <p class="eyebrow"><a href="/decision">decision.js</a> — playground</p>
+      <h1>d3-lite, in your browser</h1>
+      <p class="sub">vLLM Semantic Router's Decision 3.0 (Qwen3.5-0.8B) on WebGPU. One forward pass per question, no token generated, nothing leaves this page.</p>
+
+      <div class="model">
+        <div class="model-row">
+          <span id="status">Checking WebGPU…</span>
+          <span class="model-actions">
+            <button id="load" hidden>Load the model · 803 MB</button>
+            <button id="forget" class="quiet" hidden>Remove from cache</button>
+          </span>
+        </div>
+        <div class="meter" id="meter" hidden><div class="meter-fill" id="meterFill"></div></div>
+      </div>
+
+      <div class="presets" id="presets"></div>
+
+      <div class="grid">
+        <label class="field"><span>State · text or JSON</span><textarea id="state" spellcheck="false"></textarea></label>
+        <label class="field"><span>Questions · Decision Index schema</span><textarea id="questions" spellcheck="false"></textarea></label>
+      </div>
+
+      <div class="controls">
+        <button id="run" class="primary" disabled>Decide</button>
+        <button id="bench" disabled>Throughput · 100 requests</button>
+        <label class="toggle"><input type="checkbox" id="share" /> <span>Read the state once for all questions <em>faster, approximate</em></span></label>
+      </div>
+      <p class="line" id="line"></p>
+
+      <div id="answers" class="answers"></div>
+      <p class="line" id="speed"></p>
+
+      <p class="foot">
+        The weights (q8, 803 MB) come from <a class="ln" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">Hugging Face</a> once, then stay in your browser's cache.
+        Needs WebGPU with f16 and subgroups: a recent Chrome or Edge on a laptop or desktop GPU.
+      </p>
+    </div>
+  </main>
+</Base>
+
+<style>
+  .page { max-width: 60rem; }
+  .eyebrow a { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
+  .eyebrow a:hover { color: var(--ink); }
+  .sub { color: var(--dim); font-size: 0.85rem; margin: 0.4rem 0 2.2rem; max-width: 44rem; }
+
+  button {
+    font-family: var(--mono); font-weight: 300;
+    font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.75rem 1.3rem; cursor: pointer;
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--line);
+    transition: color 0.2s, background 0.2s, border-color 0.2s;
+  }
+  button:hover:not(:disabled) { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  button:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  button:disabled { color: var(--subtle); cursor: not-allowed; }
+  button.primary:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+  button.quiet { border-color: transparent; padding-inline: 0.6rem; }
+
+  .model { border: 1px solid var(--line); margin-bottom: 1.6rem; }
+  .model-row {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.8rem;
+    padding: 0.7rem 0.7rem 0.7rem 1.1rem;
+    font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  }
+  #status { font-variant-numeric: tabular-nums; }
+  .model-actions { display: flex; gap: 0.4rem; }
+  .meter { height: 2px; background: var(--line); }
+  .meter-fill { height: 100%; width: 0; background: var(--ink); transition: width 0.15s linear; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.2rem; }
+  /* preset buttons are created by the script, outside Astro's scoped styles */
+  .presets :global(button) {
+    font-family: var(--mono); font-weight: 300; cursor: pointer;
+    font-size: 0.64rem; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0.35rem 0.9rem; background: transparent; color: var(--dim);
+    border: 1px solid var(--subtle); transition: color 0.2s, border-color 0.2s;
+  }
+  .presets :global(button:hover), .presets :global(button[aria-pressed="true"]) { color: var(--ink); border-color: var(--ink); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 46rem) { .grid { grid-template-columns: 1fr; } }
+  .field span {
+    display: block; margin-bottom: 0.5rem;
+    font-size: 0.64rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim);
+  }
+  textarea {
+    width: 100%; min-height: 17rem; resize: vertical;
+    background: #0c0c0c; color: var(--ink);
+    border: 1px solid var(--line); outline: none;
+    padding: 0.9rem 1rem;
+    font-family: var(--mono); font-weight: 300; font-size: 0.78rem; line-height: 1.55;
+  }
+  textarea:focus { border-color: var(--subtle); }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 1.2rem; }
+  .toggle { display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.78rem; color: var(--dim); }
+  .toggle em { font-style: normal; color: var(--subtle); margin-left: 0.4rem; font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; }
+  .toggle input { appearance: none; width: 0.9rem; height: 0.9rem; border: 1px solid var(--subtle); margin: 0; cursor: pointer; flex: none; }
+  .toggle input:checked { background: var(--ink); border-color: var(--ink); }
+
+  .line { min-height: 1.2rem; margin-top: 0.9rem; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  .answers { display: grid; gap: 0; margin-top: 1.4rem; }
+  .answers :global(.answer) { border-top: 1px solid var(--line); padding: 1.1rem 0 1.2rem; }
+  .answers :global(.answer:last-child) { border-bottom: 1px solid var(--line); }
+  .answers :global(.answer h2) {
+    font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim);
+    margin-bottom: 0.8rem; display: flex; gap: 0.9rem; align-items: baseline; flex-wrap: wrap;
+  }
+  .answers :global(.answer h2 b) { font-weight: 300; color: var(--ink); font-size: 0.95rem; letter-spacing: 0.04em; text-transform: none; }
+  .answers :global(.row) { display: grid; grid-template-columns: minmax(6rem, 14rem) 1fr 4rem; gap: 1rem; align-items: center; font-size: 0.78rem; padding: 0.18rem 0; color: var(--dim); }
+  .answers :global(.row > span:first-child) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .answers :global(.row.best) { color: var(--ink); }
+  .answers :global(.track) { height: 2px; background: var(--line); }
+  .answers :global(.fill) { height: 100%; background: var(--subtle); }
+  .answers :global(.row.best .fill) { background: var(--ink); }
+  .answers :global(.num) { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .foot { margin-top: 3rem; color: var(--subtle); font-size: 0.75rem; max-width: 44rem; }
+  .ln { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
+  .ln:hover { color: var(--ink); }
+</style>
+
+<script>
+  import { Decision } from "../../vendor/decision.js";
+  import { cachingFetch, clearCache, isCached } from "../../scripts/model-cache";
+
+  const MODEL = "https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/60e671d0250ef3de39247b5f2ddd0734750b30de/"; // a commit: the cache never goes stale
+  const CACHE = "decisionjs-d3-lite-q8";
+
+  type Question = Record<string, unknown> & { type: "noul" | "choice" | "score" };
+  type Answer =
+    | { type: "noul"; noul: number }
+    | { type: "choice"; choice: string; probabilities: Record<string, number> }
+    | { type: "score"; score: number; probabilities: Record<string, number>; legend: Record<string, string> };
+
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const state = $<HTMLTextAreaElement>("state"), questions = $<HTMLTextAreaElement>("questions");
+  const run = $<HTMLButtonElement>("run"), bench = $<HTMLButtonElement>("bench"), share = $<HTMLInputElement>("share");
+  const load = $<HTMLButtonElement>("load"), forget = $<HTMLButtonElement>("forget");
+  const status = $("status"), meter = $("meter"), meterFill = $("meterFill"), line = $("line"), answers = $("answers"), speed = $("speed");
+
+  const presets: Record<string, { state: unknown; questions: Record<string, Question> }> = {
+    "Support ticket": {
+      state: "Hi, I ordered a laptop three weeks ago and it still hasn't arrived. Tracking says it's stuck in Lyon. I've emailed twice with no answer. If I don't get it by Friday I'm cancelling my subscription and going elsewhere.",
+      questions: {
+        topic: { type: "choice", instructions: "What is the main topic of the ticket?", criteria: { billing: "billing, payment, refund", delivery: "delivery, parcel", bug: "technical bug", account: "account, login, access", other: null } },
+        churn: { type: "noul", instructions: "Is the customer at risk of leaving?" },
+        urgency: { type: "score", instructions: "How urgent is the ticket?", criteria: ["low", "medium", "high"] },
+      },
+    },
+    "Tool routing": {
+      state: "Can you book me a table for two at an Italian place near the office tomorrow around 8pm, and remind me an hour before?",
+      questions: {
+        tool: { type: "choice", instructions: "Which tool should handle the main request?", criteria: { search_web: "search the web", book_restaurant: "book a restaurant table", send_email: "send an email", get_weather: "get the weather forecast", set_reminder: "set a reminder" } },
+        several_actions: { type: "noul", instructions: "Does the user ask for more than one action?" },
+        complexity: { type: "score", instructions: "How complex is the request?", criteria: ["simple", "moderate", "complex"] },
+      },
+    },
+    "Moderation · JSON": {
+      state: { user: "night_owl_42", thread: "Best budget headphones?", comment: "Honestly anyone still buying these is an idiot. Go back to your cave.", reports: 3 },
+      questions: {
+        toxic: { type: "noul", instructions: "Is the comment insulting or toxic?", criteria: { true: "insulting, harassing or hateful", false: "civil, even if critical" } },
+        action: { type: "choice", instructions: "What should the moderator do?", criteria: { keep: "leave it as is", warn: "warn the user", hide: "hide the comment", ban: "ban the user" } },
+      },
+    },
+  };
+
+  function show(name: string) {
+    const p = presets[name]!;
+    state.value = typeof p.state === "string" ? p.state : JSON.stringify(p.state, null, 2);
+    questions.value = JSON.stringify(p.questions, null, 2);
+    document.querySelectorAll<HTMLButtonElement>("#presets button").forEach((b) => b.setAttribute("aria-pressed", String(b.textContent === name)));
+  }
+  for (const name of Object.keys(presets)) {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.onclick = () => show(name);
+    $("presets").append(b);
+  }
+  show("Support ticket");
+
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const bars = (probs: Record<string, number>, best: string) =>
+    Object.entries(probs).map(([k, p]) => `<div class="row${k === best ? " best" : ""}"><span title="${esc(k)}">${esc(k)}</span><div class="track"><div class="fill" style="width:${(100 * p).toFixed(1)}%"></div></div><span class="num">${(100 * p).toFixed(1)}%</span></div>`).join("");
+  function render(name: string, a: Answer) {
+    if (a.type === "noul") {
+      const best = a.noul >= 0.5 ? "yes" : "no";
+      return `<div class="answer"><h2>${esc(name)} <b>${best}</b></h2>${bars({ yes: a.noul, no: 1 - a.noul }, best)}</div>`;
+    }
+    if (a.type === "choice") return `<div class="answer"><h2>${esc(name)} <b>${esc(a.choice)}</b></h2>${bars(a.probabilities, a.choice)}</div>`;
+    const best = Object.entries(a.probabilities).sort((x, y) => y[1] - x[1])[0]![0];
+    const label = (k: string) => `${k} · ${a.legend[k]}`;
+    return `<div class="answer"><h2>${esc(name)} <b>${esc(a.legend[best]!)}</b> expected level ${a.score.toFixed(2)}</h2>${bars(Object.fromEntries(Object.entries(a.probabilities).map(([k, p]) => [label(k), p])), label(best))}</div>`;
+  }
+
+  /** The state (JSON if it parses, else text) and the questions, or null after saying what is wrong. */
+  function inputs(): [unknown, Record<string, Question>] | null {
+    let qs: Record<string, Question>, s: unknown = state.value;
+    try { qs = JSON.parse(questions.value); } catch { line.textContent = "The questions are not valid JSON"; return null; }
+    try { s = JSON.parse(state.value); } catch { /* plain text */ }
+    return [s, qs];
+  }
+
+  let model: Awaited<ReturnType<typeof Decision.load>> | undefined;
+  let ready = "";
+
+  async function busy(f: () => Promise<void>) {
+    if (!model) return;
+    run.disabled = bench.disabled = true;
+    model.shareState = share.checked;
+    try { await f(); } catch (e) { line.textContent = (e as Error).message; }
+    run.disabled = bench.disabled = false;
+  }
+
+  run.onclick = () => busy(async () => {
+    const io = inputs(); if (!io) return;
+    const t = performance.now();
+    const r = await model!.systemOne(io[0], io[1]);
+    answers.innerHTML = Object.entries(r.answers).map(([n, a]) => render(n, a as Answer)).join("");
+    line.textContent = `${Object.keys(io[1]).length} decisions · ${(performance.now() - t).toFixed(0)} ms · ${r.usage.input_tokens} tokens${model!.shareState ? " · state read once" : ""}`;
+  });
+
+  bench.onclick = () => busy(async () => {
+    const io = inputs(); if (!io) return;
+    const n = 100, reqs = Array.from({ length: n }, () => io);
+    line.textContent = "Warming up…";
+    await model!.systemOneBatch(reqs.slice(0, 4));
+    const t = performance.now();
+    const res = await model!.systemOneBatch(reqs, { onProgress: (done: number) => (line.textContent = `Running ${n} requests · ${done}/${n}`) });
+    const ms = (performance.now() - t) / n, tokens = res.reduce((a: number, r: { usage: { input_tokens: number } }) => a + r.usage.input_tokens, 0);
+    speed.textContent = `${ms.toFixed(1)} ms per request (${Object.keys(io[1]).length} questions) · ${(1000 / ms).toFixed(1)} requests/s · ${((tokens / n / ms) * 1000).toFixed(0)} tokens/s${model!.shareState ? " · state read once" : ""}`;
+    line.textContent = ready;
+  });
+
+  async function start() {
+    load.hidden = true;
+    meter.hidden = false;
+    const fetch = cachingFetch(CACHE, (a, b) => {
+      meterFill.style.width = `${b ? (100 * a) / b : 0}%`;
+      status.textContent = `Downloading · ${(a / 1e6).toFixed(0)} / ${(b / 1e6).toFixed(0)} MB`;
+    });
+    status.textContent = "Loading…";
+    try {
+      model = await Decision.load(MODEL, {
+        fetch,
+        onProgress: (a: number, b: number) => { meterFill.style.width = `${(100 * a) / b}%`; status.textContent = `On the GPU · ${(100 * a / b).toFixed(0)}%`; },
+      });
+    } catch (e) {
+      status.textContent = `Could not load the model: ${(e as Error).message}`;
+      load.hidden = false;
+      return;
+    }
+    meter.hidden = true;
+    ready = `d3-lite ready · ${model.engine.matrixUnits ? "matrix units" : "portable kernels"}`;
+    status.textContent = ready;
+    forget.hidden = !(await isCached(CACHE, MODEL + "weights.bin"));
+    run.disabled = bench.disabled = false;
+    run.click();
+  }
+
+  load.onclick = start;
+  forget.onclick = async () => {
+    await clearCache(CACHE);
+    forget.hidden = true;
+    status.textContent = `${ready} · cache removed, the next visit downloads it again`;
+  };
+
+  // WebGPU first: no download on a browser that cannot run it.
+  const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+  if (!adapter) status.textContent = "This browser has no WebGPU · try a recent Chrome or Edge";
+  else if (!adapter.features.has("shader-f16") || !adapter.features.has("subgroups")) status.textContent = "This GPU lacks WebGPU f16 or subgroups, which d3-lite needs";
+  else if (await isCached(CACHE, MODEL + "weights.bin")) start();
+  else { status.textContent = "Ready to download d3-lite once (803 MB), then it stays cached"; load.hidden = false; }
+</script>
