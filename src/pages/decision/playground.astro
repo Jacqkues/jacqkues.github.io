@@ -21,24 +21,29 @@ import Base from "../../layouts/Base.astro";
 
       <div class="presets" id="presets"></div>
 
-      <div class="grid">
-        <div class="field"><label for="state">State · text or JSON</label><div class="editor"><pre aria-hidden="true"><code id="stateHl"></code></pre><textarea id="state" spellcheck="false"></textarea></div></div>
-        <div class="field"><label for="questions">Questions · Decision Index schema</label><div class="editor"><pre aria-hidden="true"><code id="questionsHl"></code></pre><textarea id="questions" spellcheck="false"></textarea></div></div>
-      </div>
+      <!-- on a wide screen the prompt and its answers sit side by side -->
+      <div class="work">
+        <div class="inputs">
+          <div class="field"><label for="state">State · text or JSON</label><div class="editor"><pre aria-hidden="true"><code id="stateHl"></code></pre><textarea id="state" spellcheck="false"></textarea></div></div>
+          <div class="field"><label for="questions">Questions · Decision Index schema</label><div class="editor"><pre aria-hidden="true"><code id="questionsHl"></code></pre><textarea id="questions" spellcheck="false"></textarea></div></div>
+        </div>
 
-      <div class="controls">
-        <button id="run" class="primary" disabled>Decide</button>
-        <button id="bench" disabled>Throughput · 100 requests</button>
-        <label class="toggle"><input type="checkbox" id="share" /> <span>Read the state once for all questions <em>faster, approximate</em></span></label>
-      </div>
-      <p class="line" id="line"></p>
+        <div class="out">
+          <div class="controls">
+            <button id="run" class="primary" disabled>Decide</button>
+            <button id="bench" disabled>Throughput · 100 requests</button>
+            <label class="toggle"><input type="checkbox" id="share" /> <span>Read the state once for all questions <em>faster, approximate</em></span></label>
+          </div>
+          <p class="line" id="line"></p>
 
-      <div id="answers" class="answers"></div>
-      <p class="line" id="speed"></p>
+          <div id="answers" class="answers"></div>
+          <p class="line" id="speed"></p>
+        </div>
+      </div>
 
       <p class="foot">
         The weights (q8, 803 MB) come from <a class="ln" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">Hugging Face</a> once, then stay in your browser's cache.
-        Needs WebGPU with f16 and subgroups: a recent Chrome or Edge on a laptop or desktop GPU.
+        Needs WebGPU with f16 and subgroups: a recent Chrome or Edge, fastest on a laptop or desktop GPU (recent phones work too, slower).
         Code on <a class="ln" href="https://github.com/Jacqkues/decision.js">GitHub</a>.
       </p>
     </div>
@@ -46,7 +51,7 @@ import Base from "../../layouts/Base.astro";
 </Base>
 
 <style>
-  .page { max-width: 60rem; }
+  .page { max-width: 76rem; }
   .eyebrow a { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--subtle); }
   .eyebrow a:hover { color: var(--ink); }
   .sub { color: var(--dim); font-size: 0.85rem; margin: 0.4rem 0 2.2rem; max-width: 44rem; }
@@ -87,8 +92,16 @@ import Base from "../../layouts/Base.astro";
   }
   .presets :global(button:hover), .presets :global(button[aria-pressed="true"]) { color: var(--ink); border-color: var(--ink); }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 46rem) { .grid { grid-template-columns: 1fr; } }
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 46rem) { .inputs { grid-template-columns: 1fr; } }
+  /* wide: inputs on the left, stacked; the button and the answers on the right, in view while scrolling */
+  @media (min-width: 64rem) {
+    .work { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 2.5rem; align-items: start; }
+    .inputs { grid-template-columns: 1fr; }
+    .inputs .editor textarea { min-height: 9rem; }
+    .out { position: sticky; top: 1.5rem; padding-top: 1.45rem; }
+    .out .controls { margin-top: 0; }
+  }
   .field label {
     display: block; margin-bottom: 0.5rem;
     font-size: 0.64rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim);
@@ -204,11 +217,13 @@ import Base from "../../layouts/Base.astro";
   }
   const editors = [state, questions].map((t) => ({ t, hl: $(`${t.id}Hl`) }));
   function paint() {
+    const y = scrollY; // measuring collapses the textareas for a moment, which would scroll the page up
     for (const { t, hl } of editors) {
       hl.innerHTML = highlight(t.value) + "\n"; // a trailing newline would otherwise collapse
       t.style.height = "auto";
       t.style.height = `${t.scrollHeight}px`;
     }
+    if (scrollY !== y) scrollTo(0, y);
   }
   for (const { t } of editors) t.addEventListener("input", paint);
   addEventListener("resize", paint);
@@ -218,6 +233,7 @@ import Base from "../../layouts/Base.astro";
     state.value = typeof p.state === "string" ? p.state : JSON.stringify(p.state, null, 2);
     questions.value = JSON.stringify(p.questions, null, 2);
     paint();
+    answers.innerHTML = line.textContent = speed.textContent = ""; // the answers were for the previous preset
     document.querySelectorAll<HTMLButtonElement>("#presets button").forEach((b) => b.setAttribute("aria-pressed", String(b.textContent === name)));
   }
   for (const name of Object.keys(presets)) {
