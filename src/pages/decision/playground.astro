@@ -291,7 +291,7 @@ import Base from "../../layouts/Base.astro";
     try {
       model = await Decision.load(MODEL, {
         fetch,
-        onProgress: (a: number, b: number) => { meterFill.style.width = `${(100 * a) / b}%`; status.textContent = `On the GPU · ${(100 * a / b).toFixed(0)}%`; },
+        onProgress: (a: number, b: number) => { meterFill.style.width = `${(100 * a) / b}%`; status.textContent = a < b ? `On the GPU · ${(100 * a / b).toFixed(0)}%` : "Preparing the weights on the GPU…"; },
       });
     } catch (e) {
       status.textContent = `Could not load the model: ${(e as Error).message}`;
