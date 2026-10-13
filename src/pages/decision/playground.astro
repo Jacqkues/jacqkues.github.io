@@ -286,7 +286,7 @@ import Base from "../../layouts/Base.astro";
     const fetch = cachingFetch(CACHE, (a, b) => {
       meterFill.style.width = `${b ? (100 * a) / b : 0}%`;
       status.textContent = `Downloading · ${(a / 1e6).toFixed(0)} / ${(b / 1e6).toFixed(0)} MB`;
-    }, (attempt) => (status.textContent = `Connection lost · retrying (${attempt}/8), the parts already downloaded are kept`));
+    }, (attempt) => (status.textContent = `Download interrupted · retrying (${attempt}/8), what is already downloaded is kept`));
     status.textContent = "Loading…";
     try {
       model = await Decision.load(MODEL, {

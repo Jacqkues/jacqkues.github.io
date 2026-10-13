@@ -53,16 +53,20 @@ const settled = () => new Promise<void>((resolve) => {
   check();
 });
 
-// An error of the connection (dropped, stalled), as opposed to one of the server or the disk.
-class NetworkError extends Error {}
+// A failure worth retrying: the connection dropped or stalled, or the server is busy (429, 5xx). `wait` is
+// how long the server asked to wait (Retry-After), in ms.
+class NetworkError extends Error {
+  constructor(message: string, readonly wait = 0) { super(message); }
+}
 const STALL = 20_000; // no byte for this long: the connection is stuck (phones), start the request again
 
-/** Fetches `url` and calls `chunk` with each piece of the body; a dropped or stalled connection throws a NetworkError. */
+/** Fetches `url` and calls `chunk` with each piece of the body; a failure worth retrying throws a NetworkError. */
 async function stream(url: string, headers: HeadersInit, chunk: (value: Uint8Array<ArrayBuffer>, res: Response) => Promise<void> | void): Promise<Response> {
   const abort = new AbortController();
   let timer = setTimeout(() => abort.abort(), STALL);
   try {
     const res = await fetch(url, { headers, signal: abort.signal }).catch((e) => { throw new NetworkError(String(e)); });
+    if (res.status === 429 || res.status >= 500) throw new NetworkError(`HTTP ${res.status}`, 1000 * (Number(res.headers.get("retry-after")) || 0));
     if (!res.ok || !res.body) throw new Error(`${url}: HTTP ${res.status}`);
     for (const reader = res.body.getReader(); ;) {
       clearTimeout(timer);
@@ -83,28 +87,48 @@ export function cachingFetch(cacheName: string, onDownload?: Progress, onRetry?:
   caches?.delete(cacheName).catch(() => false); // the model used to live in Cache Storage: free that copy
   const progress = (url: string, loaded: number, total: number) => url.endsWith("weights.bin") && onDownload?.(loaded, total);
 
+  /** Runs `attempt` until it succeeds, retrying failures worth retrying (8 in a row at most). */
+  async function retrying<T>(attempt: () => Promise<T>): Promise<T> {
+    for (let failures = 0; ;) {
+      try {
+        return await attempt();
+      } catch (e) {
+        if (!(e instanceof NetworkError) || ++failures > 8) throw e;
+        onRetry?.(failures);
+        await settled(); // online and visible again, then the wait the server asked for, or a backoff (longer when rate limited)
+        const backoff = (/429/.test(e.message) ? 5000 : 500) * 2 ** Math.min(failures - 1, 4);
+        await new Promise((r) => setTimeout(r, Math.min(Math.max(e.wait, backoff), 120_000)));
+      }
+    }
+  }
+
   async function inMemory(url: string): Promise<Blob> {
     const chunks: Uint8Array<ArrayBuffer>[] = [];
     let loaded = 0;
-    await stream(url, {}, (v, res) => { chunks.push(v); progress(url, (loaded += v.length), Number(res.headers.get("content-length"))); });
+    await retrying(() => {
+      chunks.length = loaded = 0;
+      return stream(url, {}, (v, res) => { chunks.push(v); progress(url, (loaded += v.length), Number(res.headers.get("content-length"))); });
+    });
     return new Blob(chunks as BlobPart[]);
   }
 
-  // Downloads part i (bytes [i·PART, …)) into its own file; returns the file's total size.
-  async function fetchPart(d: FileSystemDirectoryHandle, url: string, i: number, done: number, size?: number): Promise<number> {
+  // Downloads part i (bytes [i·PART, …)) of `url`, from `src`, into its own file. Returns the file's total size
+  // and the URL the server redirected to, which the next parts fetch directly.
+  async function fetchPart(d: FileSystemDirectoryHandle, url: string, src: string, i: number, done: number, size?: number): Promise<[number, string]> {
     const end = size === undefined ? (i + 1) * PART : i * PART + partLength(size, i);
     const w = await (await d.getFileHandle(`${fileName(url)}.${i}`, { create: true })).createWritable();
     // 206 says the file's size; 200 (the whole file) is fine only for a small file, in one part
     const sizeOf = (res: Response) => res.status === 206 ? Number(res.headers.get("content-range")?.split("/")[1]) : i === 0 ? Number(res.headers.get("content-length")) : 0;
-    let loaded = 0, total = 0;
+    let loaded = 0, total = 0, final = src;
     try {
-      const res = await stream(url, { Range: `bytes=${i * PART}-${end - 1}` }, async (v, res) => {
+      const res = await stream(src, { Range: `bytes=${i * PART}-${end - 1}` }, async (v, res) => {
         total ||= sizeOf(res);
         if (!total || (res.status === 200 && total > PART)) throw new Error(`${url}: the server does not support Range requests`);
         await w.write(v);
         progress(url, done + (loaded += v.length), total);
       });
       total ||= sizeOf(res) || loaded; // an empty file never calls the callback
+      final = res.url || src;
       await w.close(); // the part is saved only here
     } catch (e) {
       await w.abort().catch(() => undefined);
@@ -115,23 +139,26 @@ export function cachingFetch(cacheName: string, onDownload?: Progress, onRetry?:
       await s.write(String(total));
       await s.close();
     }
-    return total;
+    return [total, final];
   }
 
   async function toDisk(d: FileSystemDirectoryHandle, url: string): Promise<Blob> {
     for (const old of [fileName(url), fileName(url) + ".ok"]) await d.removeEntry(old).catch(() => undefined); // the earlier one-file layout
     let { size, parts } = await stored(d, url);
-    for (let failures = 0; size === undefined || parts.length * PART < size;) {
-      try {
-        size = await fetchPart(d, url, parts.length, parts.length * PART, size);
-        ({ parts } = await stored(d, url));
-        failures = 0;
-      } catch (e) {
-        if (!(e instanceof NetworkError) || ++failures > 8) throw e;
-        onRetry?.(failures);
-        await settled(); // then retry the same part, after a short backoff
-        await new Promise((r) => setTimeout(r, 500 * 2 ** Math.min(failures, 5)));
-      }
+    // Hugging Face redirects each request to its CDN, with a signed URL valid about an hour: the parts after the
+    // first fetch that URL, so the model costs one request to huggingface.co (which rate limits) instead of 13.
+    let src = url;
+    while (size === undefined || parts.length * PART < size) {
+      [size, src] = await retrying(async () => {
+        try {
+          return await fetchPart(d, url, src, parts.length, parts.length * PART, size);
+        } catch (e) {
+          if (src === url || e instanceof NetworkError) throw e;
+          src = url; // the CDN URL expired: ask huggingface.co again
+          throw new NetworkError(String(e));
+        }
+      });
+      ({ parts } = await stored(d, url));
     }
     return new Blob(parts);
   }
