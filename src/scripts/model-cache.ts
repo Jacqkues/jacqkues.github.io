@@ -37,8 +37,23 @@ async function cachedFile(cacheName: string, url: string): Promise<Blob | undefi
   const d = await dir(cacheName);
   if (!d) return undefined;
   const { size, parts } = await stored(d, url);
-  return size !== undefined && parts.length * PART >= size ? new Blob(parts) : undefined;
+  if (size === undefined || parts.length * PART < size) return undefined;
+  const blob = new Blob(parts);
+  if (await valid(url, blob)) return blob;
+  await forget(d, url, parts.length); // a damaged copy: download it again
+  return undefined;
 }
+
+/** JSON files must parse (the weights are checked by their length only). */
+const valid = (url: string, blob: Blob) => !url.endsWith(".json") || blob.text().then((t) => JSON.parse(t)).then(() => true, () => false);
+
+async function forget(d: FileSystemDirectoryHandle, url: string, parts: number) {
+  for (const name of [".size", ...Array.from({ length: parts }, (_, i) => `.${i}`)]) await d.removeEntry(fileName(url) + name).catch(() => undefined);
+}
+
+// One download per file for the whole page, so that clicking Load again while a download still runs joins it
+// instead of starting a second one that writes the same files.
+const inflight = new Map<string, Promise<Blob>>();
 
 // Waits until the page can download again: online, and visible (phones suspend background tabs).
 const settled = () => new Promise<void>((resolve) => {
@@ -82,7 +97,6 @@ async function stream(url: string, headers: HeadersInit, chunk: (value: Uint8Arr
 
 /** `onDownload` reports the bytes of weights.bin; `onRetry` says when the connection dropped and the download waits to go on. */
 export function cachingFetch(cacheName: string, onDownload?: Progress, onRetry?: (attempt: number) => void): typeof fetch {
-  const files = new Map<string, Promise<Blob>>();
   navigator.storage?.persist?.().catch(() => false); // ask the browser not to evict the model under storage pressure
   caches?.delete(cacheName).catch(() => false); // the model used to live in Cache Storage: free that copy
   const progress = (url: string, loaded: number, total: number) => url.endsWith("weights.bin") && onDownload?.(loaded, total);
@@ -180,8 +194,18 @@ export function cachingFetch(cacheName: string, onDownload?: Progress, onRetry?:
 
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
-    if (!files.has(url)) files.set(url, cachedFile(cacheName, url).then((f) => f ?? download(url)));
-    const blob = await files.get(url)!;
+    const key = `${cacheName} ${url}`;
+    if (!inflight.has(key)) {
+      const file = cachedFile(cacheName, url).then((f) => f ?? download(url)).then(async (blob) => {
+        if (await valid(url, blob)) return blob;
+        const d = await dir(cacheName);
+        if (d) await forget(d, url, Math.ceil(blob.size / PART) + 1);
+        throw new Error(`${url.split("/").pop()} arrived damaged, try again`);
+      });
+      inflight.set(key, file);
+      file.catch(() => inflight.delete(key)); // a failed download can be tried again
+    }
+    const blob = await inflight.get(key)!;
     const range = new Headers(init?.headers).get("Range")?.match(/bytes=(\d+)-(\d+)/);
     return range ? new Response(blob.slice(+range[1]!, +range[2]! + 1), { status: 206 }) : new Response(blob);
   }) as typeof fetch;
