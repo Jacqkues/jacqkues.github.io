@@ -27,6 +27,10 @@ const { answers } = await model.systemOne(ticket, {
   churn: { type: "noul",   instructions: "Is the customer about to leave?" },
 });
 // answers.churn → { noul: 0.83 }`;
+
+// token counts of a few packed questions (diagram 1); a static-shape engine pads each one to 136
+const seqs = [104, 92, 118, 85, 121, 99, 110, 96];
+const free = seqs.length * 136 - seqs.reduce((a, n) => a + n, 0); // room left on decision.js's row
 ---
 <Base title="decision.js — Jacques" description="decision.js, an experiment: fast WebGPU inference for System One decision models, in the browser.">
   <main class="page">
@@ -66,7 +70,82 @@ const { answers } = await model.systemOne(ticket, {
         <li>Answers that <strong>match</strong> the models' official PyTorch code, and nothing leaves the page.</li>
       </ul>
       <Code code={code} lang="ts" theme={theme} />
+
+      <h2>How it works</h2>
+
+      <h3>1 · Every question in one pass, no padding</h3>
+      <p>
+        Each question becomes its own prompt. decision.js packs them end to end on one token axis and runs the
+        whole batch as a single GPU command buffer; per-token metadata tells the attention which tokens belong
+        together. Engines with static shapes pad every prompt to a fixed length instead.
+      </p>
     </div>
+    <figure class="diagram pack">
+      <div class="lane"><span class="lane-k">decision.js</span><div class="row">{seqs.map((n, i) => <span class="seq" style={`flex: ${n}`}>{i < 3 ? `q${i + 1}` : ""}</span>)}<span class="rest" style={`flex: ${free}`}></span></div></div>
+      <div class="lane"><span class="lane-k">static shapes</span><div class="row">{seqs.map((n) => <span class="seq padded" style={`flex: 136; --real: ${(100 * n) / 136}%`}></span>)}</div></div>
+      <figcaption>Same questions, same width per token. On d1-omni, padding was about a quarter of LiteRT.js's work.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>2 · Weights converted once, then straight to the matrix units</h3>
+      <p>
+        The weights ship as 8-bit (half the download). At load time a GPU kernel turns them into f16 laid out in
+        8×8 blocks, the shape the GPU's matrix units read, so the matrix multiplication loads them directly
+        with no dequantization in the hot loop (the design of Google's ML Drift).
+      </p>
+    </div>
+    <figure class="diagram flow-x">
+      <div class="node"><span class="k">weights.bin</span><span>q8 · 803 MB<br />Hugging Face, cached</span></div>
+      <div class="arrow" aria-hidden="true"></div>
+      <div class="node"><span class="k">Once, at load</span><span>q8 → f16<br />8×8 blocks</span></div>
+      <div class="arrow" aria-hidden="true"></div>
+      <div class="node model"><span class="k">Matmul</span><span>subgroup matrices<br />≈ 93% of the chip's peak</span></div>
+    </figure>
+
+    <div class="prose">
+      <h3>3 · Where the time goes</h3>
+      <p>
+        Once the matrix multiplications run near the hardware's limit, everything else is small, so it is fused:
+        each d3-lite DeltaNet layer (convolution, norms, gates, the recurrence and the gated norm) is a single
+        kernel, and the MLP's activation runs inside its matmul.
+      </p>
+    </div>
+    <figure class="diagram time">
+      <div class="stack" role="img" aria-label="GPU time per d3-lite ticket: matrix multiplications about 86%, DeltaNet kernel about 8%, attention about 4%, the rest about 2%">
+        <span class="seg mm" style="flex: 86">matmuls · 86%</span>
+        <span class="seg dn" style="flex: 8"></span>
+        <span class="seg at" style="flex: 4"></span>
+        <span class="seg ot" style="flex: 2"></span>
+      </div>
+      <div class="legend">
+        <span><i class="mm"></i>matrix multiplications</span>
+        <span><i class="dn"></i>DeltaNet kernel · 8%</span>
+        <span><i class="at"></i>attention · 4%</span>
+        <span><i class="ot"></i>the rest · 2%</span>
+      </div>
+      <figcaption>GPU time of one d3-lite ticket (3 questions), kernel by kernel.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>4 · Only the options are scored</h3>
+      <p>
+        A chat model would compute a score for every word of its vocabulary at every step. A decision needs one
+        step and a few candidates: decision.js reads the hidden state at the answer position and scores only the
+        options' codes.
+      </p>
+    </div>
+    <figure class="diagram flow-x">
+      <div class="node"><span class="k">Last token</span><span>hidden state<br />1,024 values</span></div>
+      <div class="arrow" aria-hidden="true"></div>
+      <div class="node model"><span class="k">3 dot products</span><span>A · B · C<br />not 248,320 words</span></div>
+      <div class="arrow" aria-hidden="true"></div>
+      <div class="node out">
+        <span class="k">Softmax</span>
+        <span class="bar"><i>A</i><b style="--w: 96%"></b><em>96%</em></span>
+        <span class="bar"><i>B</i><b style="--w: 3%"></b><em>3%</em></span>
+        <span class="bar"><i>C</i><b style="--w: 1%"></b><em>1%</em></span>
+      </div>
+    </figure>
   </main>
 </Base>
 
@@ -107,5 +186,38 @@ const { answers } = await model.systemOne(ticket, {
   }
 
   .prose { margin-top: 1rem; }
+  .prose h3 { font-size: 0.95rem; color: var(--ink); margin: 2.4rem 0 0.6rem; }
+
+  .diagram { margin: 1.4rem 0 0.6rem; }
+  .diagram figcaption { margin-top: 0.7rem; font-size: 0.72rem; color: var(--subtle); }
+
+  /* 1 · packing */
+  .lane { display: grid; grid-template-columns: 7.5rem 1fr; gap: 0.8rem; align-items: center; margin-bottom: 0.5rem; }
+  .lane-k { font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+  .row { display: flex; gap: 2px; height: 1.6rem; }
+  .seq { background: #2e2e2e; font-size: 0.6rem; color: var(--ink); display: flex; align-items: center; padding-left: 0.35rem; min-width: 0; overflow: hidden; }
+  .seq:nth-child(odd) { background: #4a4a4a; }
+  .rest { border: 1px dashed var(--line); }
+  .seq.padded { background: linear-gradient(90deg, #4a4a4a var(--real), transparent var(--real)), repeating-linear-gradient(135deg, #1c1c1c 0 3px, #0a0a0a 3px 6px); }
+  @media (max-width: 40rem) { .lane { grid-template-columns: 1fr; gap: 0.3rem; } }
+
+  /* 2 & 4 · pipelines */
+  .flow-x { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; }
+  .flow-x .arrow { align-self: center; }
+  @media (max-width: 46rem) {
+    .flow-x { grid-template-columns: 1fr; }
+    .flow-x .arrow { width: 1px; height: 1.6rem; justify-self: center; }
+    .flow-x .arrow::after { right: -3px; top: auto; bottom: -1px; border: 3.5px solid transparent; border-top: 6px solid var(--subtle); border-bottom: 0; }
+  }
+
+  /* 3 · time */
+  .stack { display: flex; height: 2rem; gap: 2px; }
+  .seg { display: flex; align-items: center; padding-left: 0.6rem; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; }
+  .mm { background: #e0914f; color: var(--bg); }
+  .dn { background: #6fbfb0; }
+  .at { background: #9a9a9a; }
+  .ot { background: #4d4d4d; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--dim); }
+  .legend i { display: inline-block; width: 0.6rem; height: 0.6rem; margin-right: 0.45rem; vertical-align: -0.05rem; }
   .prose :global(pre.astro-code) { background: #0c0c0c !important; }
 </style>
