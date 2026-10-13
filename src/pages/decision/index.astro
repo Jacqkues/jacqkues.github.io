@@ -1,5 +1,25 @@
 ---
+import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
+import RawShader from "../../components/RawShader.astro";
+
+// The site's greys, with the warm and teal accents of its ASCII banner.
+const theme = {
+  name: "jacques-mono",
+  type: "dark",
+  colors: { "editor.background": "#0c0c0c", "editor.foreground": "#d6d4cf" },
+  tokenColors: [
+    { settings: { foreground: "#d6d4cf" } },
+    { scope: ["comment", "punctuation.definition.comment"], settings: { foreground: "#5e5e5e", fontStyle: "italic" } },
+    { scope: ["keyword", "storage", "storage.type", "keyword.control"], settings: { foreground: "#ffffff" } },
+    { scope: ["string", "string.quoted", "punctuation.definition.string"], settings: { foreground: "#6fbfb0" } },
+    { scope: ["constant.numeric", "constant.language"], settings: { foreground: "#e0914f" } },
+    { scope: ["entity.name.function", "support.function", "meta.function-call entity.name.function"], settings: { foreground: "#ffffff" } },
+    { scope: ["entity.name.type", "support.class", "entity.name.class", "variable.other.constant"], settings: { foreground: "#e0914f" } },
+    { scope: ["meta.object-literal.key", "support.type.property-name", "variable.other.property"], settings: { foreground: "#a8a6a1" } },
+    { scope: ["punctuation", "meta.brace", "keyword.operator"], settings: { foreground: "#7a7a7a" } },
+  ],
+};
 
 const models = [
   { name: "d1-omni-600M", href: "https://huggingface.co/LiquidAI/d1-omni-600M", weights: "q8 · 405 MB", speed: "34 ms", parity: "63 / 63" },
@@ -21,22 +41,26 @@ const { answers } = await d3.systemOne(ticket, {
 // answers.churn   → { noul: 0.83 }                     P(yes)
 // answers.urgency → { score: 1.16, legend: { 0: "low", 1: "medium", 2: "high" } }`;
 ---
-<Base title="decision.js — Jacques" description="decision.js: small decision models (d1, d3-lite, Laya) running in the browser on WebGPU. Typed decisions over any text or JSON, in one forward pass, with no server.">
+<Base title="decision.js — Jacques" description="decision.js: small decision models (d1, d3-lite, Laya) running in the browser on WebGPU. Typed decisions over any text or JSON, in one forward pass, with no server." fullBleed>
   <main>
-    <div class="page">
-      <p class="eyebrow">WebGPU inference engine — TypeScript</p>
-      <h1>decision.js</h1>
-      <p class="lede">
-        Small decision models in the browser, on WebGPU. You give it a state (a support ticket, a form, a log
-        line, any JSON) and typed questions; it answers with calibrated probabilities in one forward pass,
-        with no token generated and nothing sent to a server.
-      </p>
-
-      <div class="cta">
-        <a class="btn primary" href="/decision/playground">View playground →</a>
-        <a class="btn" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">d3-lite weights on Hugging Face</a>
+    <section class="hero">
+      <RawShader scene={9} />
+      <div class="hero-copy">
+        <p class="eyebrow">WebGPU inference engine — TypeScript</p>
+        <h1>decision.js</h1>
+        <p class="lede">
+          Small decision models in the browser, on WebGPU. You give it a state (a support ticket, a form, a log
+          line, any JSON) and typed questions; it answers with calibrated probabilities in one forward pass,
+          with no token generated and nothing sent to a server.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="/decision/playground">View playground →</a>
+          <a class="btn" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">d3-lite weights on Hugging Face</a>
+        </div>
       </div>
+    </section>
 
+    <div class="page">
       <dl class="stats">
         <div><dt>vs LiteRT.js (ML Drift)</dt><dd>2.1× faster</dd></div>
         <div><dt>d1-omni, per ticket</dt><dd>34 ms</dd></div>
@@ -56,7 +80,7 @@ const { answers } = await d3.systemOne(ticket, {
           The API mirrors the models' own Python API (<code>system_one</code>, <code>probabilities</code>): the same question
           schema, the same prompts token for token, and the same answers.
         </p>
-        <pre><code>{code}</code></pre>
+        <Code code={code} lang="ts" theme={theme} />
 
         <h2>Models</h2>
         <p>
@@ -107,10 +131,20 @@ const { answers } = await d3.systemOne(ticket, {
 </Base>
 
 <style>
-  .page { max-width: 52rem; }
+  .hero { position: relative; height: min(86svh, 52rem); min-height: 34rem; }
+  .hero-copy {
+    position: absolute; z-index: 5; bottom: clamp(2rem, 6vh, 3.5rem);
+    left: 0; right: 0; max-width: 52rem; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2rem);
+    pointer-events: none;
+  }
+  .hero-copy > * { text-shadow: 0 0 24px rgba(0, 0, 0, 0.9); }
+  .hero-copy h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); letter-spacing: -0.02em; }
+  .hero-copy .cta { pointer-events: auto; }
+  .page { max-width: 52rem; padding-top: 3rem; }
   .lede { color: #d6d4cf; font-size: 1rem; margin: 1rem 0 2rem; max-width: 44rem; }
 
-  .cta { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-bottom: 2.8rem; }
+  .cta { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+  .btn { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); }
   .btn {
     font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
     padding: 0.85rem 1.4rem; border: 1px solid var(--line); color: var(--dim);
@@ -124,6 +158,7 @@ const { answers } = await d3.systemOne(ticket, {
     border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
     margin: 0 0 1rem;
   }
+  .prose :global(pre.astro-code) { background: #0c0c0c !important; }
   .stats div { padding: 1.1rem 1rem 1.2rem 0; }
   .stats div + div { border-left: 1px solid var(--line); padding-left: 1rem; }
   dt { font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.4rem; }
