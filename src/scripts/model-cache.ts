@@ -10,8 +10,10 @@ const PART = 64 << 20;
 
 // One OPFS directory per model. A file "x" is stored as "x.size" (its length, known after the first
 // response) and parts "x.0", "x.1", …; a part counts once it has its full length.
+/** Whether this browser can keep the model on disk (some Safari versions cannot write OPFS files). */
+export const canStore = typeof FileSystemFileHandle !== "undefined" && "createWritable" in FileSystemFileHandle.prototype;
 const dir = (cacheName: string, create = false) =>
-  navigator.storage?.getDirectory?.().then((root) => root.getDirectoryHandle(cacheName, { create })).catch(() => undefined);
+  !canStore ? Promise.resolve(undefined) : navigator.storage?.getDirectory?.().then((root) => root.getDirectoryHandle(cacheName, { create })).catch(() => undefined);
 const fileName = (url: string) => encodeURIComponent(new URL(url).pathname.split("/").pop() || "index");
 const partLength = (size: number, i: number) => Math.min(PART, size - i * PART);
 
@@ -38,8 +40,6 @@ async function cachedFile(cacheName: string, url: string): Promise<Blob | undefi
   return size !== undefined && parts.length * PART >= size ? new Blob(parts) : undefined;
 }
 
-const quota = (e: unknown) => (e as Error)?.name === "QuotaExceededError";
-
 // Waits until the page can download again: online, and visible (phones suspend background tabs).
 const settled = () => new Promise<void>((resolve) => {
   const check = () => {
@@ -53,69 +53,98 @@ const settled = () => new Promise<void>((resolve) => {
   check();
 });
 
-export function cachingFetch(cacheName: string, onDownload?: Progress): typeof fetch {
+// An error of the connection (dropped, stalled), as opposed to one of the server or the disk.
+class NetworkError extends Error {}
+const STALL = 20_000; // no byte for this long: the connection is stuck (phones), start the request again
+
+/** Fetches `url` and calls `chunk` with each piece of the body; a dropped or stalled connection throws a NetworkError. */
+async function stream(url: string, headers: HeadersInit, chunk: (value: Uint8Array<ArrayBuffer>, res: Response) => Promise<void> | void): Promise<Response> {
+  const abort = new AbortController();
+  let timer = setTimeout(() => abort.abort(), STALL);
+  try {
+    const res = await fetch(url, { headers, signal: abort.signal }).catch((e) => { throw new NetworkError(String(e)); });
+    if (!res.ok || !res.body) throw new Error(`${url}: HTTP ${res.status}`);
+    for (const reader = res.body.getReader(); ;) {
+      clearTimeout(timer);
+      timer = setTimeout(() => abort.abort(), STALL);
+      const { done, value } = await reader.read().catch((e) => { throw new NetworkError(String(e)); });
+      if (done) return res;
+      await chunk(value, res);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** `onDownload` reports the bytes of weights.bin; `onRetry` says when the connection dropped and the download waits to go on. */
+export function cachingFetch(cacheName: string, onDownload?: Progress, onRetry?: (attempt: number) => void): typeof fetch {
   const files = new Map<string, Promise<Blob>>();
   navigator.storage?.persist?.().catch(() => false); // ask the browser not to evict the model under storage pressure
   caches?.delete(cacheName).catch(() => false); // the model used to live in Cache Storage: free that copy
+  const progress = (url: string, loaded: number, total: number) => url.endsWith("weights.bin") && onDownload?.(loaded, total);
 
   async function inMemory(url: string): Promise<Blob> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-    return res.blob();
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    let loaded = 0;
+    await stream(url, {}, (v, res) => { chunks.push(v); progress(url, (loaded += v.length), Number(res.headers.get("content-length"))); });
+    return new Blob(chunks as BlobPart[]);
   }
 
   // Downloads part i (bytes [i·PART, …)) into its own file; returns the file's total size.
   async function fetchPart(d: FileSystemDirectoryHandle, url: string, i: number, done: number, size?: number): Promise<number> {
     const end = size === undefined ? (i + 1) * PART : i * PART + partLength(size, i);
-    const res = await fetch(url, { headers: { Range: `bytes=${i * PART}-${end - 1}` } });
-    if (!res.ok || !res.body) throw new Error(`${url}: HTTP ${res.status}`);
-    // 200: the server sent the whole file, which is fine only if it fits in one part (a small file)
-    const total = res.status === 206 ? Number(res.headers.get("content-range")?.split("/")[1]) : i === 0 ? Number(res.headers.get("content-length")) : 0;
-    if (!total || (res.status === 200 && total > PART)) throw new Error(`${url}: the server does not support Range requests`);
-    if (size === undefined) {
-      const w = await (await d.getFileHandle(fileName(url) + ".size", { create: true })).createWritable();
-      await w.write(String(total));
-      await w.close();
-    }
     const w = await (await d.getFileHandle(`${fileName(url)}.${i}`, { create: true })).createWritable();
-    let loaded = 0;
+    // 206 says the file's size; 200 (the whole file) is fine only for a small file, in one part
+    const sizeOf = (res: Response) => res.status === 206 ? Number(res.headers.get("content-range")?.split("/")[1]) : i === 0 ? Number(res.headers.get("content-length")) : 0;
+    let loaded = 0, total = 0;
     try {
-      for (const reader = res.body.getReader(); ;) {
-        const { done: end, value } = await reader.read();
-        if (end) break;
-        await w.write(value);
-        loaded += value.length;
-        if (url.endsWith("weights.bin")) onDownload?.(done + loaded, total);
-      }
+      const res = await stream(url, { Range: `bytes=${i * PART}-${end - 1}` }, async (v, res) => {
+        total ||= sizeOf(res);
+        if (!total || (res.status === 200 && total > PART)) throw new Error(`${url}: the server does not support Range requests`);
+        await w.write(v);
+        progress(url, done + (loaded += v.length), total);
+      });
+      total ||= sizeOf(res) || loaded; // an empty file never calls the callback
       await w.close(); // the part is saved only here
     } catch (e) {
       await w.abort().catch(() => undefined);
       throw e;
     }
+    if (size === undefined) {
+      const s = await (await d.getFileHandle(fileName(url) + ".size", { create: true })).createWritable();
+      await s.write(String(total));
+      await s.close();
+    }
     return total;
+  }
+
+  async function toDisk(d: FileSystemDirectoryHandle, url: string): Promise<Blob> {
+    for (const old of [fileName(url), fileName(url) + ".ok"]) await d.removeEntry(old).catch(() => undefined); // the earlier one-file layout
+    let { size, parts } = await stored(d, url);
+    for (let failures = 0; size === undefined || parts.length * PART < size;) {
+      try {
+        size = await fetchPart(d, url, parts.length, parts.length * PART, size);
+        ({ parts } = await stored(d, url));
+        failures = 0;
+      } catch (e) {
+        if (!(e instanceof NetworkError) || ++failures > 8) throw e;
+        onRetry?.(failures);
+        await settled(); // then retry the same part, after a short backoff
+        await new Promise((r) => setTimeout(r, 500 * 2 ** Math.min(failures, 5)));
+      }
+    }
+    return new Blob(parts);
   }
 
   async function download(url: string): Promise<Blob> {
     const d = await dir(cacheName, true);
-    if (!d) return inMemory(url);
-    for (const old of [fileName(url), fileName(url) + ".ok"]) await d.removeEntry(old).catch(() => undefined); // the earlier one-file layout
     const wake = await navigator.wakeLock?.request("screen").catch(() => undefined); // a sleeping phone drops the connection
     try {
-      let { size, parts } = await stored(d, url);
-      for (let failures = 0; size === undefined || parts.length * PART < size;) {
-        try {
-          size = await fetchPart(d, url, parts.length, parts.length * PART, size);
-          ({ parts } = await stored(d, url));
-          failures = 0;
-        } catch (e) {
-          if (quota(e) || /HTTP 4|Range/.test(String(e)) || ++failures > 8) throw e;
-          await settled(); // then retry the same part, after a short backoff
-          await new Promise((r) => setTimeout(r, 500 * 2 ** Math.min(failures, 5)));
-        }
-      }
-      return new Blob(parts);
+      if (!d) return await inMemory(url);
+      return await toDisk(d, url);
     } catch (e) {
-      if (quota(e)) return inMemory(url); // no room on disk: this visit only
+      // the disk failed (full, or a browser that cannot write files): keep the model in memory for this visit
+      if (d && !(e instanceof NetworkError) && !/HTTP|Range/.test(String(e))) return await inMemory(url);
       throw e;
     } finally {
       wake?.release().catch(() => undefined);

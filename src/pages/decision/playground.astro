@@ -144,7 +144,7 @@ import Base from "../../layouts/Base.astro";
 
 <script>
   import { Decision } from "../../vendor/decision.js";
-  import { cachingFetch, clearCache, isCached, partial } from "../../scripts/model-cache";
+  import { cachingFetch, canStore, clearCache, isCached, partial } from "../../scripts/model-cache";
 
   const MODEL = "https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/60e671d0250ef3de39247b5f2ddd0734750b30de/"; // a commit: the cache never goes stale
   const CACHE = "decisionjs-d3-lite-q8";
@@ -286,7 +286,7 @@ import Base from "../../layouts/Base.astro";
     const fetch = cachingFetch(CACHE, (a, b) => {
       meterFill.style.width = `${b ? (100 * a) / b : 0}%`;
       status.textContent = `Downloading · ${(a / 1e6).toFixed(0)} / ${(b / 1e6).toFixed(0)} MB`;
-    });
+    }, (attempt) => (status.textContent = `Connection lost · retrying (${attempt}/8), the parts already downloaded are kept`));
     status.textContent = "Loading…";
     try {
       model = await Decision.load(MODEL, {
@@ -326,5 +326,5 @@ import Base from "../../layouts/Base.astro";
   if (!adapter) status.textContent = "This browser has no WebGPU · try a recent Chrome or Edge";
   else if (!adapter.features.has("shader-f16") || !adapter.features.has("subgroups")) status.textContent = "This GPU lacks WebGPU f16 or subgroups, which d3-lite needs";
   else if (await isCached(CACHE, MODEL + "weights.bin")) start();
-  else if (!(await offerResume())) { status.textContent = "Ready to download d3-lite once (803 MB), then it stays cached"; load.hidden = false; }
+  else if (!(await offerResume())) { status.textContent = canStore ? "Ready to download d3-lite once (803 MB), then it stays cached" : "Ready to download d3-lite (803 MB) · this browser cannot keep it, so each visit downloads it again"; load.hidden = false; }
 </script>
