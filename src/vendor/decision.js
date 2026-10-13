@@ -1,4 +1,4 @@
-// decision.js (https://jacqkues.github.io/decision), bundled with its tokenizer dependency by `npm run bundle` in the decision.js repo. Apache-2.0.
+// decision.js (https://github.com/Jacqkues/decision.js), bundled with its tokenizer dependency by `npm run bundle` in the decision.js repo. Apache-2.0.
 //#region src/kernels.ts
 var e = "enable f16;", t = `${e}
 struct P { T: u32, H: u32, pad0: u32, pad1: u32 }
