@@ -1,18 +1,19 @@
 ---
 import Base from "../../layouts/Base.astro";
 ---
-<Base title="decision.js playground — Jacques" description="d3-lite running in your browser on WebGPU with decision.js: typed decisions over any text or JSON, nothing leaves the page.">
+<Base title="decision.js playground — Jacques" description="Decision models (d3-lite, EmbeddingGemma 2) running in your browser on WebGPU with decision.js: typed decisions over any text or JSON, nothing leaves the page.">
   <main>
     <div class="page">
       <p class="eyebrow"><a href="/decision">decision.js</a> — playground</p>
-      <h1>d3-lite, in your browser</h1>
-      <p class="sub">vLLM Semantic Router's Decision 3.0 (Qwen3.5-0.8B) on WebGPU. One forward pass per question, no token generated, nothing leaves this page.</p>
+      <h1>Decision models, in your browser</h1>
+      <p class="sub" id="sub"></p>
 
       <div class="model">
+        <div class="picker" id="picker" role="radiogroup" aria-label="Model"></div>
         <div class="model-row">
           <span id="status">Checking WebGPU…</span>
           <span class="model-actions">
-            <button id="load" class="primary" hidden>Load the model · 803 MB</button>
+            <button id="load" class="primary" hidden>Load the model</button>
             <button id="forget" class="quiet" hidden>Remove from cache</button>
           </span>
         </div>
@@ -32,7 +33,7 @@ import Base from "../../layouts/Base.astro";
           <div class="controls">
             <button id="run" class="primary" disabled>Decide</button>
             <button id="bench" disabled>Throughput · 100 requests</button>
-            <label class="toggle"><input type="checkbox" id="share" /> <span>Read the state once for all questions <em>faster, approximate</em></span></label>
+            <label class="toggle" id="shareWrap"><input type="checkbox" id="share" /> <span>Read the state once for all questions <em>faster, approximate</em></span></label>
           </div>
           <p class="line" id="line"></p>
 
@@ -42,7 +43,7 @@ import Base from "../../layouts/Base.astro";
       </div>
 
       <p class="foot">
-        The weights (q8, 803 MB) come from <a class="ln" href="https://huggingface.co/Jacqkues/d3-lite-decisionjs">Hugging Face</a> once, then stay in your browser's cache.
+        The weights come from <a class="ln" id="hub" href="https://huggingface.co/Jacqkues">Hugging Face</a> once, then stay in your browser's cache.
         Needs WebGPU with f16 and subgroups: a recent Chrome or Edge, fastest on a laptop or desktop GPU (recent phones work too, slower).
         Code on <a class="ln" href="https://github.com/Jacqkues/decision.js">GitHub</a>.
       </p>
@@ -72,6 +73,21 @@ import Base from "../../layouts/Base.astro";
   button.quiet { border-color: transparent; padding-inline: 0.6rem; color: var(--dim); }
 
   .model { border: 1px solid var(--line); margin-bottom: 1.6rem; }
+  /* the model choices, made by the script: name and size, then what the model is good at */
+  .picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); border-bottom: 1px solid var(--line); }
+  .picker :global(button) { /* made by the script, so none of the scoped button styles apply */
+    display: grid; gap: 0.35rem; text-align: left; cursor: pointer;
+    font-family: var(--mono); font-weight: 300; background: transparent; color: var(--dim);
+    padding: 0.9rem 1.1rem; border: 0; border-right: 1px solid var(--line); transition: color 0.2s, background 0.2s;
+  }
+  .picker :global(button:last-child) { border-right: 0; }
+  .picker :global(button b) { font-weight: 300; font-size: 0.8rem; letter-spacing: 0.04em; color: inherit; }
+  .picker :global(button b span) { color: var(--subtle); margin-left: 0.5rem; font-size: 0.7rem; letter-spacing: 0.1em; }
+  .picker :global(button small) { font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--subtle); }
+  .picker :global(button[aria-checked="true"]) { color: var(--ink); background: #141414; box-shadow: inset 0 -2px 0 var(--ink); }
+  .picker :global(button:hover:not(:disabled)) { color: var(--ink); background: #141414; }
+  .picker :global(button:disabled) { cursor: progress; }
+  @media (max-width: 46rem) { .picker :global(button) { border-right: 0; border-bottom: 1px solid var(--line); } .picker :global(button:last-child) { border-bottom: 0; } }
   .model-row {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.8rem;
     padding: 0.7rem 0.7rem 0.7rem 1.1rem;
@@ -128,6 +144,7 @@ import Base from "../../layouts/Base.astro";
 
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 1.2rem; }
   .toggle { display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer; font-size: 0.78rem; color: var(--dim); }
+  .toggle[hidden] { display: none; }
   .toggle em { font-style: normal; color: var(--subtle); margin-left: 0.4rem; font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; }
   .toggle input { appearance: none; width: 0.9rem; height: 0.9rem; border: 1px solid var(--subtle); margin: 0; cursor: pointer; flex: none; }
   .toggle input:checked { background: var(--ink); border-color: var(--ink); }
@@ -159,8 +176,25 @@ import Base from "../../layouts/Base.astro";
   import { Decision } from "../../vendor/decision.js";
   import { cachingFetch, canStore, clearCache, isCached, partial } from "../../scripts/model-cache";
 
-  const MODEL = "https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/60e671d0250ef3de39247b5f2ddd0734750b30de/"; // a commit: the cache never goes stale
-  const CACHE = "decisionjs-d3-lite-q8";
+  // Each model is pinned to a commit, so that its cache never goes stale; each has its own cache.
+  const EG2 = "https://huggingface.co/Jacqkues/embeddinggemma-2-typed-decision-decisionjs";
+  const EG2_SUB = "mrm8488's EmbeddingGemma 2 fine-tuned for typed decisions. The state, each question and each option are embedded separately; once a set of questions has been asked, a new state costs one pass. Best on workflow states: tickets, agent traces, invoices, alerts.";
+  const MODELS = {
+    d3: {
+      name: "d3-lite", mb: 803, note: "general reasoning", hub: "https://huggingface.co/Jacqkues/d3-lite-decisionjs", cache: "decisionjs-d3-lite-q8", share: true,
+      url: "https://huggingface.co/Jacqkues/d3-lite-decisionjs/resolve/60e671d0250ef3de39247b5f2ddd0734750b30de/",
+      sub: "vLLM Semantic Router's Decision 3.0 (Qwen3.5-0.8B). One forward pass per question, no token generated. The most accurate on general reasoning.",
+    },
+    eg2: {
+      name: "EmbeddingGemma 2", mb: 293, note: "workflow states · fastest", hub: EG2, cache: "decisionjs-eg2-q8", share: false,
+      url: `${EG2}/resolve/e7a9e1fe811e00be92484ae463f78909b0981c2c/`, sub: EG2_SUB,
+    },
+    eg2q4: {
+      name: "EmbeddingGemma 2 · q4", mb: 158, note: "lighter · for phones", hub: EG2, cache: "decisionjs-eg2-q4", share: false,
+      url: `${EG2}/resolve/e7a9e1fe811e00be92484ae463f78909b0981c2c/q4/`, sub: `${EG2_SUB} 4-bit weights: about half the download, slightly less accurate.`,
+    },
+  };
+  type Key = keyof typeof MODELS;
 
   type Question = Record<string, unknown> & { type: "noul" | "choice" | "score" };
   type Answer =
@@ -170,7 +204,7 @@ import Base from "../../layouts/Base.astro";
 
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const state = $<HTMLTextAreaElement>("state"), questions = $<HTMLTextAreaElement>("questions");
-  const run = $<HTMLButtonElement>("run"), bench = $<HTMLButtonElement>("bench"), share = $<HTMLInputElement>("share");
+  const run = $<HTMLButtonElement>("run"), bench = $<HTMLButtonElement>("bench"), share = $<HTMLInputElement>("share"), shareWrap = $("shareWrap");
   const load = $<HTMLButtonElement>("load"), forget = $<HTMLButtonElement>("forget");
   const status = $("status"), meter = $("meter"), meterFill = $("meterFill"), line = $("line"), answers = $("answers"), speed = $("speed");
 
@@ -189,6 +223,19 @@ import Base from "../../layouts/Base.astro";
         tool: { type: "choice", instructions: "Which tool should handle the main request?", criteria: { search_web: "search the web", book_restaurant: "book a restaurant table", send_email: "send an email", get_weather: "get the weather forecast", set_reminder: "set a reminder" } },
         several_actions: { type: "noul", instructions: "Does the user ask for more than one action?" },
         complexity: { type: "score", instructions: "How complex is the request?", criteria: ["simple", "moderate", "complex"] },
+      },
+    },
+    "Agent trace": {
+      state: {
+        agent: { autonomy: "unsupervised", model: "internal-agent-v2" },
+        task: "Clean up stale feature branches merged more than 90 days ago.",
+        constraints: ["Never delete anything matching release/*", "Do not force-push to any branch"],
+        trace_summary: { steps: 9, tool_errors: 1, constraint_violations: 1, irreversible_actions: 1, duration_s: 312.4, notes: "Deleted release/2024-q3 along with 41 stale branches." },
+      },
+      questions: {
+        action: { type: "choice", instructions: "What should the observability system do with this trace?", criteria: { continue: "Let the agent proceed without interruption.", observe: "Keep running, but flag the trace for later sampling.", human_review: "Queue this trace for a human to review.", stop: "Halt the agent now." } },
+        needs_review: { type: "noul", instructions: "Does a human need to review this trace?" },
+        risk: { type: "score", instructions: "How risky is what the agent did?", criteria: ["no risk", "low risk", "significant risk", "severe risk"] },
       },
     },
     "Moderation · JSON": {
@@ -266,13 +313,19 @@ import Base from "../../layouts/Base.astro";
   }
 
   let model: Awaited<ReturnType<typeof Decision.load>> | undefined;
+  let current: (typeof MODELS)[Key] = MODELS.d3;
+  let loading = false; // a model loading or the GPU busy: the model cannot change
   let ready = "";
 
   async function busy(f: () => Promise<void>) {
     if (!model) return;
     run.disabled = bench.disabled = true;
-    model.shareState = share.checked;
+    loading = true; // no switching while the GPU works
+    picker();
+    model.shareState = current.share && share.checked;
     try { await f(); } catch (e) { line.textContent = (e as Error).message; }
+    loading = false;
+    picker();
     run.disabled = bench.disabled = false;
   }
 
@@ -281,14 +334,18 @@ import Base from "../../layouts/Base.astro";
     const t = performance.now();
     const r = await model!.systemOne(io[0], io[1]);
     answers.innerHTML = Object.entries(r.answers).map(([n, a]) => render(n, a as Answer)).join("");
-    line.textContent = `${Object.keys(io[1]).length} decisions · ${(performance.now() - t).toFixed(0)} ms · ${r.usage.input_tokens} tokens${model!.shareState ? " · state read once" : ""}`;
+    const tokens = r.usage.input_tokens ? `${r.usage.input_tokens} tokens` : "every text already embedded"; // EmbeddingGemma 2 keeps what it has read
+    line.textContent = `${Object.keys(io[1]).length} decisions · ${(performance.now() - t).toFixed(0)} ms · ${tokens}${model!.shareState ? " · state read once" : ""}`;
   });
 
   bench.onclick = () => busy(async () => {
     const io = inputs(); if (!io) return;
-    const n = 100, reqs = Array.from({ length: n }, () => io);
+    // 100 different states (a request number added): EmbeddingGemma 2 would answer a state it has seen from its cache
+    const n = 100, [s0, qs] = io;
+    const variant = (i: number) => (typeof s0 === "string" ? `${s0} (request ${i})` : s0 && typeof s0 === "object" && !Array.isArray(s0) ? { ...s0, request: i } : s0);
+    const reqs = Array.from({ length: n }, (_, i) => [variant(i + 1), qs] as [unknown, Record<string, Question>]);
     line.textContent = "Warming up…";
-    await model!.systemOneBatch(reqs.slice(0, 4));
+    await model!.systemOneBatch(reqs.slice(0, 4).map(([, q], i) => [variant(-i - 1), q]));
     const t = performance.now();
     const res = await model!.systemOneBatch(reqs, { onProgress: (done: number) => (line.textContent = `Running ${n} requests · ${done}/${n}`) });
     const ms = (performance.now() - t) / n, tokens = res.reduce((a: number, r: { usage: { input_tokens: number } }) => a + r.usage.input_tokens, 0);
@@ -297,50 +354,96 @@ import Base from "../../layouts/Base.astro";
   });
 
   async function start() {
+    const m = current;
+    loading = true;
+    picker(); // no switching while a model loads
     load.hidden = true;
     meter.hidden = false;
-    const fetch = cachingFetch(CACHE, (a, b) => {
+    meterFill.style.width = "0%";
+    const fetch = cachingFetch(m.cache, (a, b) => {
       meterFill.style.width = `${b ? (100 * a) / b : 0}%`;
       status.textContent = `Downloading · ${(a / 1e6).toFixed(0)} / ${(b / 1e6).toFixed(0)} MB`;
     }, (attempt) => (status.textContent = `Download interrupted · retrying (${attempt}/8), what is already downloaded is kept`));
     status.textContent = "Loading…";
     try {
-      model = await Decision.load(MODEL, {
+      model = await Decision.load(m.url, {
         fetch,
         onProgress: (a: number, b: number) => { meterFill.style.width = `${(100 * a) / b}%`; status.textContent = a < b ? `On the GPU · ${(100 * a / b).toFixed(0)}%` : "Preparing the weights on the GPU…"; },
       });
     } catch (e) {
-      status.textContent = `Could not load the model: ${(e as Error).message}`;
+      loading = false;
+      picker();
+      meter.hidden = true;
+      status.textContent = `Could not load ${m.name}: ${(e as Error).message}`;
       await offerResume();
       return;
     }
+    loading = false;
+    picker();
     meter.hidden = true;
-    ready = `d3-lite ready · ${model.engine.matrixUnits ? "matrix units" : "portable kernels"}`;
+    ready = `${m.name} ready · ${model.engine.matrixUnits ? "matrix units" : "portable kernels"}`;
     status.textContent = ready;
-    forget.hidden = !(await isCached(CACHE, MODEL + "weights.bin"));
+    forget.hidden = !(await isCached(m.cache, m.url + "weights.bin"));
     run.disabled = bench.disabled = false;
     run.click();
   }
 
   /** After a download stopped halfway: offers to resume it, keeping the parts already on disk. */
   async function offerResume() {
-    const { loaded, total } = await partial(CACHE, MODEL + "weights.bin");
-    load.textContent = loaded ? `Resume download · ${(loaded / 1e6).toFixed(0)} / ${(total / 1e6).toFixed(0)} MB` : "Load the model · 803 MB";
+    const { loaded, total } = await partial(current.cache, current.url + "weights.bin");
+    load.textContent = loaded ? `Resume download · ${(loaded / 1e6).toFixed(0)} / ${(total / 1e6).toFixed(0)} MB` : `Load the model · ${current.mb} MB`;
     load.hidden = false;
     return loaded > 0;
   }
 
   load.onclick = start;
   forget.onclick = async () => {
-    await clearCache(CACHE);
+    await clearCache(current.cache);
     forget.hidden = true;
     status.textContent = `${ready} · cache removed, the next visit downloads it again`;
   };
 
+  /** The model choices, one button each: its name, its size and what it is good at. */
+  function picker() {
+    const box = $("picker");
+    box.replaceChildren(...(Object.keys(MODELS) as Key[]).map((k) => {
+      const m = MODELS[k], b = document.createElement("button");
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(m === current));
+      b.disabled = loading;
+      b.innerHTML = `<b>${esc(m.name)}<span>${m.mb} MB</span></b><small>${esc(m.note)}</small>`;
+      b.onclick = () => m !== current && choose(k);
+      return b;
+    }));
+  }
+
+  /** Switches to model `k`: frees the one on the GPU, then loads `k` from the cache, or offers to download it. */
+  async function choose(k: Key) {
+    current = MODELS[k];
+    try { localStorage.setItem("decisionjs-model", k); } catch { /* private mode */ }
+    history.replaceState(null, "", `?model=${k}`);
+    model?.destroy();
+    model = undefined;
+    run.disabled = bench.disabled = true;
+    answers.innerHTML = line.textContent = speed.textContent = "";
+    forget.hidden = true;
+    shareWrap.hidden = !current.share;
+    $("sub").textContent = `${current.sub} On WebGPU, nothing leaves this page.`;
+    $<HTMLAnchorElement>("hub").href = current.hub;
+    picker();
+    if (!gpuOk) return;
+    if (await isCached(current.cache, current.url + "weights.bin")) start();
+    else if (!(await offerResume())) {
+      status.textContent = canStore ? `Ready to download ${current.name} once (${current.mb} MB), then it stays cached` : `Ready to download ${current.name} (${current.mb} MB) · this browser cannot keep it, so each visit downloads it again`;
+    }
+  }
+
   // WebGPU first: no download on a browser that cannot run it.
   const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+  const gpuOk = !!adapter && adapter.features.has("shader-f16") && adapter.features.has("subgroups");
+  const saved = (() => { try { return localStorage.getItem("decisionjs-model"); } catch { return null; } })();
+  const asked = new URLSearchParams(location.search).get("model") ?? saved;
+  await choose(asked && asked in MODELS ? (asked as Key) : "d3");
   if (!adapter) status.textContent = "This browser has no WebGPU · try a recent Chrome or Edge";
-  else if (!adapter.features.has("shader-f16") || !adapter.features.has("subgroups")) status.textContent = "This GPU lacks WebGPU f16 or subgroups, which d3-lite needs";
-  else if (await isCached(CACHE, MODEL + "weights.bin")) start();
-  else if (!(await offerResume())) { status.textContent = canStore ? "Ready to download d3-lite once (803 MB), then it stays cached" : "Ready to download d3-lite (803 MB) · this browser cannot keep it, so each visit downloads it again"; load.hidden = false; }
+  else if (!gpuOk) status.textContent = "This GPU lacks WebGPU f16 or subgroups, which these models need";
 </script>

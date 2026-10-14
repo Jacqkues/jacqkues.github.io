@@ -52,7 +52,7 @@ const free = seqs.length * 136 - seqs.reduce((a, n) => a + n, 0); // room left o
         <div class="node"><span class="k">Questions</span><span>yes / no · choice · score</span></div>
       </div>
       <div class="arrow" aria-hidden="true"></div>
-      <div class="node model"><span class="k">Model · WebGPU</span><span>d1 or d3-lite, one forward pass, no text generated</span></div>
+      <div class="node model"><span class="k">Model · WebGPU</span><span>d1, d3-lite or EmbeddingGemma 2, no text generated</span></div>
       <div class="arrow" aria-hidden="true"></div>
       <div class="node out">
         <span class="k">Answers</span>
@@ -67,6 +67,7 @@ const free = seqs.length * 136 - seqs.reduce((a, n) => a + n, 0); // room left o
       <ul>
         <li><strong>34 ms</strong> for 3 decisions on a support ticket with d1-omni (Apple M5 Pro, Chrome).</li>
         <li>About <strong>2× faster</strong> than Google's LiteRT.js on the same model.</li>
+        <li><strong>6 ms</strong> per ticket with EmbeddingGemma 2 typed decisions, which embeds the questions once and then only reads each new state; faster than Google's LiteRT-LM on the same architecture.</li>
         <li>Answers that <strong>match</strong> the models' official PyTorch code, and nothing leaves the page.</li>
       </ul>
       <Code code={code} lang="ts" theme={theme} />
